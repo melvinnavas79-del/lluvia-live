@@ -1,53 +1,63 @@
-import { useEffect } from "react";
+import React, { useState, useEffect } from 'react';
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
+import { UserProvider, useUser } from './contexts/UserContext';
+import LoginPage from './pages/LoginPage';
+import Dashboard from './pages/Dashboard';
+import RoomView from './pages/RoomView';
+import ProfileView from './pages/ProfileView';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+function AppContent() {
+  const { isAuthenticated, login } = useUser();
+  const [currentView, setCurrentView] = useState('dashboard');
+  const [selectedRoomId, setSelectedRoomId] = useState(null);
 
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
+  useEffect(() => {
+    const savedUser = localStorage.getItem('user');
+    if (savedUser) {
+      login(JSON.parse(savedUser));
+    }
+  }, []);
+
+  const handleNavigate = (view, data) => {
+    if (view === 'room') {
+      setSelectedRoomId(data);
+      setCurrentView('room');
+    } else {
+      setCurrentView(view);
     }
   };
 
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
+  if (!isAuthenticated) {
+    return <LoginPage onLogin={() => setCurrentView('dashboard')} />;
+  }
+
+  if (currentView === 'room' && selectedRoomId) {
+    return (
+      <RoomView
+        roomId={selectedRoomId}
+        onBack={() => setCurrentView('dashboard')}
+      />
+    );
+  }
+
+  if (currentView === 'profile') {
+    return (
+      <ProfileView
+        onBack={() => setCurrentView('dashboard')}
+      />
+    );
+  }
 
   return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
+    <Dashboard onNavigate={handleNavigate} />
   );
-};
+}
 
 function App() {
   return (
-    <div className="App">
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
-          </Route>
-        </Routes>
-      </BrowserRouter>
-    </div>
+    <UserProvider>
+      <AppContent />
+    </UserProvider>
   );
 }
 
