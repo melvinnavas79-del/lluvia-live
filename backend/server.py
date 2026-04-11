@@ -140,7 +140,7 @@ async def update_user(user_id: str, updates: dict):
 
 # ==================== ROOM ROUTES ====================
 
-@api_router.post("/rooms", response_model=Room)
+@api_router.post("/rooms")
 async def create_room(room_data: RoomCreate, owner_id: str):
     owner = await db.users.find_one({"id": owner_id}, {"_id": 0})
     if not owner:
@@ -152,15 +152,16 @@ async def create_room(room_data: RoomCreate, owner_id: str):
         owner_name=owner['username']
     )
     
-    await db.rooms.insert_one(room.model_dump())
-    return room
+    room_dict = room.model_dump()
+    await db.rooms.insert_one(room_dict)
+    return room_dict
 
-@api_router.get("/rooms", response_model=List[Room])
+@api_router.get("/rooms")
 async def get_rooms():
     rooms = await db.rooms.find({}, {"_id": 0}).to_list(100)
     return rooms
 
-@api_router.get("/rooms/{room_id}", response_model=Room)
+@api_router.get("/rooms/{room_id}")
 async def get_room(room_id: str):
     room = await db.rooms.find_one({"id": room_id}, {"_id": 0})
     if not room:
