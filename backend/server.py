@@ -46,16 +46,20 @@ def serialize_user(user: Dict[str, Any]) -> Dict[str, Any]:
     """Remove sensitive data and ensure clean serialization"""
     if not user:
         return None
-    user.pop('password', None)
-    user.pop('_id', None)
-    return user
+    # Create a copy to avoid modifying original
+    user_copy = dict(user)
+    user_copy.pop('password', None)
+    user_copy.pop('_id', None)
+    return user_copy
 
 def serialize_room(room: Dict[str, Any]) -> Dict[str, Any]:
     """Ensure clean room serialization"""
     if not room:
         return None
-    room.pop('_id', None)
-    return room
+    # Create a copy to avoid modifying original
+    room_copy = dict(room)
+    room_copy.pop('_id', None)
+    return room_copy
 
 # ==================== USER ROUTES ====================
 
