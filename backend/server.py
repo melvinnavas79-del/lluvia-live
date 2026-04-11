@@ -5,8 +5,8 @@ from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
 from pathlib import Path
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional
+from pydantic import BaseModel
+from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone
 import bcrypt
@@ -14,7 +14,6 @@ import bcrypt
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
@@ -32,34 +31,10 @@ class UserLogin(BaseModel):
     username: str
     password: str
 
-class User(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    username: str
-    level: int = 1
-    coins: int = 1000
-    diamonds: int = 0
-    aristocracy: int = 0
-    vip_status: str = "NORMAL"  # NORMAL, VIP, SVIP, ARISTOCRAT
-    badges: List[str] = []
-    avatar: str = "https://api.dicebear.com/7.x/avataaars/svg?seed=default"
-    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-
-class Room(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    name: str
-    owner_id: str
-    owner_name: str
-    active_users: int = 0
-    max_seats: int = 9
-    seats: List[Optional[dict]] = Field(default_factory=lambda: [None] * 9)
-    created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
-
 class RoomCreate(BaseModel):
     name: str
 
-# ==================== HELPER FUNCTIONS ====================
+# ==================== HELPERS ====================
 
 def hash_password(password: str) -> str:
     return bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
@@ -67,65 +42,68 @@ def hash_password(password: str) -> str:
 def verify_password(password: str, hashed: str) -> bool:
     return bcrypt.checkpw(password.encode('utf-8'), hashed.encode('utf-8'))
 
-def get_level_info(level: int) -> dict:
-    levels = {
-        1: {"name": "Bronce", "emoji": "🥉"},
-        2: {"name": "Plata", "emoji": "👑👑"},
-        3: {"name": "Oro", "emoji": "👑👑👑"},
-        4: {"name": "Diamante Azul", "emoji": "💎"},
-        5: {"name": "Esmeralda", "emoji": "💎💎"},
-        6: {"name": "Rubí", "emoji": "💎💎💎"},
-        7: {"name": "Zafiro", "emoji": "👑💎"},
-        8: {"name": "Arcoíris", "emoji": "👑💎👑"},
-        9: {"name": "SUPREMO", "emoji": "👑💎👑💎"}
-    }
-    return levels.get(level, levels[1])
+def serialize_user(user: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove sensitive data and ensure clean serialization"""
+    if not user:
+        return None
+    user.pop('password', None)
+    user.pop('_id', None)
+    return user
+
+def serialize_room(room: Dict[str, Any]) -> Dict[str, Any]:
+    """Ensure clean room serialization"""
+    if not room:
+        return None
+    room.pop('_id', None)
+    return room
 
 # ==================== USER ROUTES ====================
 
 @api_router.post("/register")
 async def register(user_data: UserRegister):
-    # Check if user exists
-    existing = await db.users.find_one({"username": user_data.username}, {"_id": 0})
+    existing = await db.users.find_one({"username": user_data.username})
     if existing:
         raise HTTPException(status_code=400, detail="Usuario ya existe")
     
-    # Create user
-    user = User(
-        username=user_data.username,
-        badges=["🌟 Nuevo"]
-    )
-    user_dict = user.model_dump()
-    user_dict['password'] = hash_password(user_data.password)
+    user_id = str(uuid.uuid4())
+    user_doc = {
+        "id": user_id,
+        "username": user_data.username,
+        "password": hash_password(user_data.password),
+        "level": 1,
+        "coins": 1000,
+        "diamonds": 0,
+        "aristocracy": 0,
+        "vip_status": "NORMAL",
+        "badges": ["🌟 Nuevo"],
+        "avatar": f"https://api.dicebear.com/7.x/avataaars/svg?seed={user_id}",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
     
-    await db.users.insert_one(user_dict)
-    
-    # Return without password
-    del user_dict['password']
-    return {"success": True, "user": user_dict}
+    await db.users.insert_one(user_doc)
+    return {"success": True, "user": serialize_user(user_doc)}
 
 @api_router.post("/login")
 async def login(credentials: UserLogin):
-    user = await db.users.find_one({"username": credentials.username}, {"_id": 0})
+    user = await db.users.find_one({"username": credentials.username})
     
     if not user or not verify_password(credentials.password, user['password']):
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
     
-    del user['password']
-    return {"success": True, "user": user}
+    return {"success": True, "user": serialize_user(user)}
 
 @api_router.get("/users/{user_id}")
 async def get_user(user_id: str):
-    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0})
+    user = await db.users.find_one({"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    return user
+    return serialize_user(user)
 
 @api_router.put("/users/{user_id}")
-async def update_user(user_id: str, updates: dict):
-    # Remove password from updates if present
+async def update_user(user_id: str, updates: Dict[str, Any]):
     updates.pop('password', None)
     updates.pop('id', None)
+    updates.pop('_id', None)
     
     result = await db.users.update_one(
         {"id": user_id},
@@ -133,55 +111,65 @@ async def update_user(user_id: str, updates: dict):
     )
     
     if result.modified_count == 0:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+        user = await db.users.find_one({"id": user_id})
+        if not user:
+            raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
-    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0})
-    return user
+    user = await db.users.find_one({"id": user_id})
+    return serialize_user(user)
 
 # ==================== ROOM ROUTES ====================
 
 @api_router.post("/rooms")
 async def create_room(room_data: RoomCreate, owner_id: str):
-    owner = await db.users.find_one({"id": owner_id}, {"_id": 0})
+    owner = await db.users.find_one({"id": owner_id})
     if not owner:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
-    room = Room(
-        name=room_data.name,
-        owner_id=owner_id,
-        owner_name=owner['username']
-    )
+    room_id = str(uuid.uuid4())
+    room_doc = {
+        "id": room_id,
+        "name": room_data.name,
+        "owner_id": owner_id,
+        "owner_name": owner['username'],
+        "active_users": 0,
+        "max_seats": 9,
+        "seats": [None] * 9,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
     
-    room_dict = room.model_dump()
-    await db.rooms.insert_one(room_dict)
-    return room_dict
+    await db.rooms.insert_one(room_doc)
+    return serialize_room(room_doc)
 
 @api_router.get("/rooms")
 async def get_rooms():
-    rooms = await db.rooms.find({}, {"_id": 0}).to_list(100)
-    return rooms
+    rooms = await db.rooms.find().to_list(100)
+    return [serialize_room(r) for r in rooms]
 
 @api_router.get("/rooms/{room_id}")
 async def get_room(room_id: str):
-    room = await db.rooms.find_one({"id": room_id}, {"_id": 0})
+    room = await db.rooms.find_one({"id": room_id})
     if not room:
         raise HTTPException(status_code=404, detail="Sala no encontrada")
-    return room
+    return serialize_room(room)
 
 @api_router.post("/rooms/{room_id}/join")
 async def join_room(room_id: str, user_id: str, seat_index: int):
-    room = await db.rooms.find_one({"id": room_id}, {"_id": 0})
+    room = await db.rooms.find_one({"id": room_id})
     if not room:
         raise HTTPException(status_code=404, detail="Sala no encontrada")
     
-    user = await db.users.find_one({"id": user_id}, {"_id": 0, "password": 0})
+    user = await db.users.find_one({"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
-    # Update seat
     seats = room.get('seats', [None] * 9)
-    if seat_index >= len(seats) or seats[seat_index] is not None:
-        raise HTTPException(status_code=400, detail="Asiento no disponible")
+    
+    if seat_index >= len(seats):
+        raise HTTPException(status_code=400, detail="Índice de asiento inválido")
+    
+    if seats[seat_index] is not None:
+        raise HTTPException(status_code=400, detail="Asiento ocupado")
     
     seats[seat_index] = {
         "user_id": user_id,
@@ -191,50 +179,63 @@ async def join_room(room_id: str, user_id: str, seat_index: int):
         "is_muted": False
     }
     
+    active_count = sum(1 for s in seats if s is not None)
+    
     await db.rooms.update_one(
         {"id": room_id},
-        {"$set": {"seats": seats, "active_users": sum(1 for s in seats if s)}}
+        {"$set": {"seats": seats, "active_users": active_count}}
     )
     
-    return {"success": True}
+    return {"success": True, "seat_index": seat_index}
 
 @api_router.post("/rooms/{room_id}/leave")
 async def leave_room(room_id: str, user_id: str):
-    room = await db.rooms.find_one({"id": room_id}, {"_id": 0})
+    room = await db.rooms.find_one({"id": room_id})
     if not room:
         raise HTTPException(status_code=404, detail="Sala no encontrada")
     
     seats = room.get('seats', [])
+    updated = False
+    
     for i, seat in enumerate(seats):
         if seat and seat.get('user_id') == user_id:
             seats[i] = None
+            updated = True
     
-    await db.rooms.update_one(
-        {"id": room_id},
-        {"$set": {"seats": seats, "active_users": sum(1 for s in seats if s)}}
-    )
+    if updated:
+        active_count = sum(1 for s in seats if s is not None)
+        await db.rooms.update_one(
+            {"id": room_id},
+            {"$set": {"seats": seats, "active_users": active_count}}
+        )
     
+    return {"success": True}
+
+@api_router.delete("/rooms/{room_id}")
+async def delete_room(room_id: str, owner_id: str):
+    room = await db.rooms.find_one({"id": room_id})
+    if not room:
+        raise HTTPException(status_code=404, detail="Sala no encontrada")
+    
+    if room['owner_id'] != owner_id:
+        raise HTTPException(status_code=403, detail="No tienes permiso")
+    
+    await db.rooms.delete_one({"id": room_id})
     return {"success": True}
 
 # ==================== RANKINGS ====================
 
 @api_router.get("/rankings/coins")
 async def get_coins_ranking():
-    users = await db.users.find(
-        {},
-        {"_id": 0, "password": 0}
-    ).sort("coins", -1).limit(50).to_list(50)
-    return users
+    users = await db.users.find().sort("coins", -1).limit(50).to_list(50)
+    return [serialize_user(u) for u in users]
 
 @api_router.get("/rankings/level")
 async def get_level_ranking():
-    users = await db.users.find(
-        {},
-        {"_id": 0, "password": 0}
-    ).sort("level", -1).limit(50).to_list(50)
-    return users
+    users = await db.users.find().sort("level", -1).limit(50).to_list(50)
+    return [serialize_user(u) for u in users]
 
-# ==================== APP SETUP ====================
+# ==================== SETUP ====================
 
 app.include_router(api_router)
 

@@ -1,0 +1,308 @@
+import requests
+import sys
+from datetime import datetime
+import json
+
+class LluviaLiveAPITester:
+    def __init__(self, base_url="https://codigo-necesario.preview.emergentagent.com/api"):
+        self.base_url = base_url
+        self.tests_run = 0
+        self.tests_passed = 0
+        self.test_user_id = None
+        self.test_room_id = None
+
+    def run_test(self, name, method, endpoint, expected_status, data=None, params=None):
+        """Run a single API test"""
+        url = f"{self.base_url}/{endpoint}"
+        headers = {'Content-Type': 'application/json'}
+
+        self.tests_run += 1
+        print(f"\n🔍 Testing {name}...")
+        
+        try:
+            if method == 'GET':
+                response = requests.get(url, headers=headers, params=params)
+            elif method == 'POST':
+                response = requests.post(url, json=data, headers=headers, params=params)
+            elif method == 'PUT':
+                response = requests.put(url, json=data, headers=headers, params=params)
+            elif method == 'DELETE':
+                response = requests.delete(url, headers=headers, params=params)
+
+            success = response.status_code == expected_status
+            if success:
+                self.tests_passed += 1
+                print(f"✅ Passed - Status: {response.status_code}")
+                try:
+                    return success, response.json()
+                except:
+                    return success, {}
+            else:
+                print(f"❌ Failed - Expected {expected_status}, got {response.status_code}")
+                try:
+                    print(f"Response: {response.json()}")
+                except:
+                    print(f"Response text: {response.text}")
+
+            return success, {}
+
+        except Exception as e:
+            print(f"❌ Failed - Error: {str(e)}")
+            return False, {}
+
+    def test_user_registration(self):
+        """Test user registration"""
+        timestamp = datetime.now().strftime('%H%M%S')
+        username = f"testuser_{timestamp}"
+        password = "TestPass123!"
+        
+        success, response = self.run_test(
+            "User Registration",
+            "POST",
+            "register",
+            200,
+            data={"username": username, "password": password}
+        )
+        
+        if success and response.get('success') and response.get('user'):
+            self.test_user_id = response['user']['id']
+            print(f"✅ User created with ID: {self.test_user_id}")
+            return username, password
+        return None, None
+
+    def test_user_login(self, username, password):
+        """Test user login"""
+        success, response = self.run_test(
+            "User Login",
+            "POST",
+            "login",
+            200,
+            data={"username": username, "password": password}
+        )
+        
+        if success and response.get('success') and response.get('user'):
+            print(f"✅ Login successful for user: {username}")
+            return True
+        return False
+
+    def test_invalid_login(self):
+        """Test login with invalid credentials"""
+        success, response = self.run_test(
+            "Invalid Login",
+            "POST",
+            "login",
+            401,
+            data={"username": "nonexistent", "password": "wrongpass"}
+        )
+        return success
+
+    def test_get_user(self):
+        """Test getting user by ID"""
+        if not self.test_user_id:
+            print("❌ No test user ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Get User",
+            "GET",
+            f"users/{self.test_user_id}",
+            200
+        )
+        
+        if success and response.get('username'):
+            print(f"✅ Retrieved user: {response['username']}")
+            return True
+        return False
+
+    def test_update_user(self):
+        """Test updating user"""
+        if not self.test_user_id:
+            print("❌ No test user ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Update User",
+            "PUT",
+            f"users/{self.test_user_id}",
+            200,
+            data={"coins": 2000, "level": 2}
+        )
+        
+        if success and response.get('coins') == 2000 and response.get('level') == 2:
+            print(f"✅ User updated successfully")
+            return True
+        return False
+
+    def test_create_room(self):
+        """Test creating a room"""
+        if not self.test_user_id:
+            print("❌ No test user ID available")
+            return False
+            
+        room_name = f"Test Room {datetime.now().strftime('%H%M%S')}"
+        success, response = self.run_test(
+            "Create Room",
+            "POST",
+            "rooms",
+            200,
+            data={"name": room_name},
+            params={"owner_id": self.test_user_id}
+        )
+        
+        if success and response.get('id'):
+            self.test_room_id = response['id']
+            print(f"✅ Room created with ID: {self.test_room_id}")
+            return True
+        return False
+
+    def test_get_rooms(self):
+        """Test getting all rooms"""
+        success, response = self.run_test(
+            "Get Rooms",
+            "GET",
+            "rooms",
+            200
+        )
+        
+        if success and isinstance(response, list):
+            print(f"✅ Retrieved {len(response)} rooms")
+            return True
+        return False
+
+    def test_get_room(self):
+        """Test getting specific room"""
+        if not self.test_room_id:
+            print("❌ No test room ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Get Room",
+            "GET",
+            f"rooms/{self.test_room_id}",
+            200
+        )
+        
+        if success and response.get('id') == self.test_room_id:
+            print(f"✅ Retrieved room: {response['name']}")
+            return True
+        return False
+
+    def test_join_room(self):
+        """Test joining a room seat"""
+        if not self.test_room_id or not self.test_user_id:
+            print("❌ No test room or user ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Join Room Seat",
+            "POST",
+            f"rooms/{self.test_room_id}/join",
+            200,
+            params={"user_id": self.test_user_id, "seat_index": 0}
+        )
+        
+        if success and response.get('success'):
+            print(f"✅ Joined seat {response.get('seat_index', 0)}")
+            return True
+        return False
+
+    def test_leave_room(self):
+        """Test leaving a room"""
+        if not self.test_room_id or not self.test_user_id:
+            print("❌ No test room or user ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Leave Room",
+            "POST",
+            f"rooms/{self.test_room_id}/leave",
+            200,
+            params={"user_id": self.test_user_id}
+        )
+        
+        if success and response.get('success'):
+            print(f"✅ Left room successfully")
+            return True
+        return False
+
+    def test_rankings(self):
+        """Test ranking endpoints"""
+        coins_success, coins_response = self.run_test(
+            "Coins Ranking",
+            "GET",
+            "rankings/coins",
+            200
+        )
+        
+        level_success, level_response = self.run_test(
+            "Level Ranking",
+            "GET",
+            "rankings/level",
+            200
+        )
+        
+        return coins_success and level_success
+
+    def test_delete_room(self):
+        """Test deleting a room"""
+        if not self.test_room_id or not self.test_user_id:
+            print("❌ No test room or user ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Delete Room",
+            "DELETE",
+            f"rooms/{self.test_room_id}",
+            200,
+            params={"owner_id": self.test_user_id}
+        )
+        
+        if success and response.get('success'):
+            print(f"✅ Room deleted successfully")
+            return True
+        return False
+
+def main():
+    print("🌧️ Starting Lluvia Live API Tests...")
+    tester = LluviaLiveAPITester()
+    
+    # Test user registration and login flow
+    username, password = tester.test_user_registration()
+    if not username:
+        print("❌ Registration failed, stopping tests")
+        return 1
+    
+    if not tester.test_user_login(username, password):
+        print("❌ Login failed, stopping tests")
+        return 1
+    
+    # Test invalid login
+    tester.test_invalid_login()
+    
+    # Test user operations
+    tester.test_get_user()
+    tester.test_update_user()
+    
+    # Test room operations
+    if not tester.test_create_room():
+        print("❌ Room creation failed, skipping room tests")
+    else:
+        tester.test_get_rooms()
+        tester.test_get_room()
+        tester.test_join_room()
+        tester.test_leave_room()
+        tester.test_delete_room()
+    
+    # Test rankings
+    tester.test_rankings()
+    
+    # Print results
+    print(f"\n📊 Test Results:")
+    print(f"Tests passed: {tester.tests_passed}/{tester.tests_run}")
+    success_rate = (tester.tests_passed / tester.tests_run) * 100 if tester.tests_run > 0 else 0
+    print(f"Success rate: {success_rate:.1f}%")
+    
+    return 0 if tester.tests_passed == tester.tests_run else 1
+
+if __name__ == "__main__":
+    sys.exit(main())
