@@ -116,6 +116,18 @@ async def update_user(user_id: str, updates: Dict[str, Any]):
             raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
     user = await db.users.find_one({"id": user_id})
+    
+    # Check for Bebé Robot prize (15M after reaching 70M)
+    if user.get('coins', 0) >= 70000000:
+        last_prize = user.get('last_baby_robot_prize', 0)
+        if user['coins'] - last_prize >= 70000000:
+            await db.users.update_one(
+                {"id": user_id},
+                {"$inc": {"coins": 15000000}, "$set": {"last_baby_robot_prize": user['coins']}}
+            )
+            user = await db.users.find_one({"id": user_id})
+            user['baby_robot_awarded'] = True
+    
     return serialize_user(user)
 
 # ==================== ROOM ROUTES ====================
@@ -176,7 +188,8 @@ async def join_room(room_id: str, user_id: str, seat_index: int):
         "username": user['username'],
         "avatar": user['avatar'],
         "level": user['level'],
-        "is_muted": False
+        "is_muted": False,
+        "audio_enabled": True
     }
     
     active_count = sum(1 for s in seats if s is not None)
@@ -187,6 +200,29 @@ async def join_room(room_id: str, user_id: str, seat_index: int):
     )
     
     return {"success": True, "seat_index": seat_index}
+
+@api_router.post("/rooms/{room_id}/toggle-mute")
+async def toggle_mute(room_id: str, user_id: str):
+    room = await db.rooms.find_one({"id": room_id})
+    if not room:
+        raise HTTPException(status_code=404, detail="Sala no encontrada")
+    
+    seats = room.get('seats', [])
+    updated = False
+    
+    for i, seat in enumerate(seats):
+        if seat and seat.get('user_id') == user_id:
+            seats[i]['is_muted'] = not seat.get('is_muted', False)
+            updated = True
+            break
+    
+    if updated:
+        await db.rooms.update_one(
+            {"id": room_id},
+            {"$set": {"seats": seats}}
+        )
+    
+    return {"success": True}
 
 @api_router.post("/rooms/{room_id}/leave")
 async def leave_room(room_id: str, user_id: str):
