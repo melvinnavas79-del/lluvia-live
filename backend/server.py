@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 import bcrypt
 import random
 import shutil
+from agora_token_builder import RtcTokenBuilder
 
 ROOT_DIR = Path(__file__).parent
 UPLOAD_DIR = ROOT_DIR / "uploads"
@@ -207,8 +208,27 @@ async def join_room(room_id: str, user_id: str, seat_index: int):
     if seat_index >= len(seats):
         raise HTTPException(status_code=400, detail="Índice de asiento inválido")
     
-    if seats[seat_index] is not None:
+    if seats[seat_index] is not None and seats[seat_index].get('user_id') != user_id:
         raise HTTPException(status_code=400, detail="Asiento ocupado")
+    
+    # FIX: Remove user from ANY other seat first (no duplicates)
+    for i, s in enumerate(seats):
+        if s and s.get('user_id') == user_id:
+            seats[i] = None
+    
+    # Also remove from other rooms
+    all_rooms = await db.rooms.find().to_list(100)
+    for other_room in all_rooms:
+        if other_room['id'] != room_id:
+            other_seats = other_room.get('seats', [])
+            changed = False
+            for i, s in enumerate(other_seats):
+                if s and s.get('user_id') == user_id:
+                    other_seats[i] = None
+                    changed = True
+            if changed:
+                ac = sum(1 for s in other_seats if s is not None)
+                await db.rooms.update_one({"id": other_room['id']}, {"$set": {"seats": other_seats, "active_users": ac}})
     
     seats[seat_index] = {
         "user_id": user_id,
@@ -216,7 +236,8 @@ async def join_room(room_id: str, user_id: str, seat_index: int):
         "avatar": user['avatar'],
         "level": user['level'],
         "is_muted": False,
-        "audio_enabled": True
+        "audio_enabled": True,
+        "joined_at": datetime.now(timezone.utc).isoformat()
     }
     
     active_count = sum(1 for s in seats if s is not None)
@@ -1101,6 +1122,90 @@ async def upload_file(file: UploadFile = File(...)):
     
     file_url = f"/api/uploads/{filename}"
     return {"success": True, "url": file_url, "filename": filename}
+
+# ==================== AGORA TOKEN ====================
+
+@api_router.post("/agora/token")
+async def get_agora_token(channel_name: str, user_id: str):
+    app_id = os.environ.get('AGORA_APP_ID')
+    app_cert = os.environ.get('AGORA_APP_CERTIFICATE')
+    if not app_id or not app_cert:
+        raise HTTPException(status_code=500, detail="Agora not configured")
+    
+    uid = abs(hash(user_id)) % 100000
+    expiration = 3600
+    current_ts = int(datetime.now(timezone.utc).timestamp())
+    privilege_expired_ts = current_ts + expiration
+    
+    token = RtcTokenBuilder.buildTokenWithUid(
+        app_id, app_cert, channel_name, uid, 1, privilege_expired_ts
+    )
+    
+    return {"token": token, "uid": uid, "channel": channel_name, "app_id": app_id}
+
+# ==================== ROOM CHAT ====================
+
+class ChatMessage(BaseModel):
+    user_id: str
+    text: str
+
+@api_router.post("/rooms/{room_id}/chat")
+async def send_chat(room_id: str, msg: ChatMessage):
+    user = await db.users.find_one({"id": msg.user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    chat_doc = {
+        "id": str(uuid.uuid4()),
+        "room_id": room_id,
+        "user_id": msg.user_id,
+        "username": user['username'],
+        "avatar": user['avatar'],
+        "text": msg.text,
+        "type": "message",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.room_chat.insert_one(chat_doc)
+    chat_doc.pop('_id', None)
+    return chat_doc
+
+@api_router.get("/rooms/{room_id}/chat")
+async def get_chat(room_id: str, limit: int = 50):
+    msgs = await db.room_chat.find({"room_id": room_id}).sort("created_at", -1).limit(limit).to_list(limit)
+    msgs.reverse()
+    return [{k: v for k, v in m.items() if k != "_id"} for m in msgs]
+
+@api_router.post("/rooms/{room_id}/welcome")
+async def welcome_message(room_id: str, user_id: str):
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        return {"success": False}
+    
+    # Get entry animation
+    arist = user.get('aristocracy', 0)
+    level = user.get('level', 1)
+    if arist >= 9 or level >= 90:
+        entry = "🐉 ¡EL DRAGÓN HA LLEGADO!"
+    elif arist >= 7 or level >= 70:
+        entry = "🦅 ¡EL ÁGUILA HA ATERRIZADO!"
+    elif arist >= 5 or level >= 50:
+        entry = "🔥 ¡FUEGO EN LA SALA!"
+    else:
+        entry = f"👋 ¡Bienvenido/a!"
+    
+    welcome_doc = {
+        "id": str(uuid.uuid4()),
+        "room_id": room_id,
+        "user_id": user_id,
+        "username": user['username'],
+        "avatar": user['avatar'],
+        "text": f"{entry} {user['username']} entró a la sala",
+        "type": "welcome",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.room_chat.insert_one(welcome_doc)
+    welcome_doc.pop('_id', None)
+    return welcome_doc
 
 # ==================== SETUP ====================
 
