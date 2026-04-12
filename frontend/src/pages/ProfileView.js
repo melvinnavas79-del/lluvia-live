@@ -8,21 +8,6 @@ const ProfileView = ({ onBack, onNavigate }) => {
   const { user, logout, updateUser } = useUser();
   const [ghostMode, setGhostMode] = useState(user?.ghost_mode || false);
 
-  const getLevelInfo = (level) => {
-    const levels = {
-      1: { name: 'Bronce', emoji: '🥉' },
-      2: { name: 'Plata', emoji: '👑👑' },
-      3: { name: 'Oro', emoji: '👑👑👑' },
-      4: { name: 'Diamante Azul', emoji: '💎' },
-      5: { name: 'Esmeralda', emoji: '💎💎' },
-      6: { name: 'Rubí', emoji: '💎💎💎' },
-      7: { name: 'Zafiro', emoji: '👑💎' },
-      8: { name: 'Arcoíris', emoji: '👑💎👑' },
-      9: { name: 'SUPREMO', emoji: '👑💎👑💎' }
-    };
-    return levels[level] || levels[1];
-  };
-
   const toggleGhostMode = async () => {
     try {
       const res = await axios.post(`${API}/users/${user.id}/ghost-mode`);
@@ -35,118 +20,155 @@ const ProfileView = ({ onBack, onNavigate }) => {
     }
   };
 
-  const levelInfo = getLevelInfo(user.level);
+  const memberDate = user.created_at ? new Date(user.created_at).toLocaleDateString('es-ES') : '11/4/2026';
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-900 via-purple-900 to-blue-900 p-4">
-      <div className="max-w-2xl mx-auto">
-        <div className="mb-6">
-          <button
-            onClick={onBack}
-            className="bg-pink-500 hover:bg-pink-600 text-white px-6 py-2 rounded-full font-medium transition-colors flex items-center gap-2"
-          >
-            <span>←</span> Volver
-          </button>
-        </div>
+    <div className="min-h-screen bg-gray-50 pb-24">
+      {/* Profile Header Banner */}
+      <div className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 pt-8 pb-16 px-4 relative">
+        {/* Back button */}
+        <button
+          onClick={onBack}
+          className="absolute top-4 left-4 bg-white/20 backdrop-blur text-white px-4 py-2 rounded-full text-sm font-medium"
+        >
+          ← Volver
+        </button>
 
-        <div className="bg-gradient-to-br from-purple-900/50 to-blue-900/50 border-4 border-pink-500 rounded-3xl p-8 mb-6">
-          <div className="flex justify-center mb-6">
+        {/* Avatar */}
+        <div className="flex justify-center mb-4">
+          <div className="w-28 h-28 rounded-full border-4 border-white bg-white overflow-hidden shadow-lg">
             <img
               src={user.avatar}
               alt={user.username}
-              className="w-32 h-32 rounded-full border-4 border-pink-500"
+              className="w-full h-full object-cover"
             />
-          </div>
-
-          <h2 className="text-3xl font-bold text-white text-center mb-2">
-            {user.username} {user.is_admin && '👑'}
-          </h2>
-          <p className="text-yellow-400 text-center text-xl mb-6">{user.vip_status}</p>
-
-          <div className="bg-black/30 rounded-2xl p-6 mb-6">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <div className="text-gray-400 text-sm mb-1">💰 Monedas</div>
-                <div className="text-pink-400 text-2xl font-bold">{user.coins?.toLocaleString()}</div>
-              </div>
-              <div>
-                <div className="text-gray-400 text-sm mb-1">Nivel</div>
-                <div className="text-pink-400 text-2xl font-bold">Nivel {user.level}</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-r from-purple-600/30 to-pink-600/30 rounded-2xl p-6 mb-6">
-            <div className="text-center">
-              <div className="text-5xl mb-2">{levelInfo.emoji}</div>
-              <div className="text-white text-xl font-bold">{levelInfo.name}</div>
-              <div className="text-gray-300 text-sm mt-2">Aristocracia: {user.aristocracy}</div>
-            </div>
-          </div>
-
-          <div className="mb-6">
-            <h3 className="text-white font-bold mb-3">🎯 Badges:</h3>
-            <div className="flex flex-wrap gap-2">
-              {user.badges?.map((badge, i) => (
-                <span
-                  key={i}
-                  className="bg-purple-600/50 px-3 py-1 rounded-full text-white text-sm"
-                >
-                  {badge}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div className="bg-gradient-to-r from-blue-600/30 to-cyan-600/30 rounded-2xl p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-gray-300 text-sm">💎 Diamantes</div>
-                <div className="text-cyan-400 text-2xl font-bold">{user.diamonds}</div>
-              </div>
-              <button className="bg-cyan-500 hover:bg-cyan-600 px-6 py-2 rounded-full text-white font-medium transition-colors">
-                Recargar
-              </button>
-            </div>
           </div>
         </div>
 
-        <div className="space-y-3 mb-6">
-          <button
-            onClick={toggleGhostMode}
-            className="w-full bg-purple-800/40 hover:bg-purple-700/50 border-2 border-purple-500/30 text-white py-4 rounded-2xl font-medium transition-all flex items-center justify-between px-6"
-          >
-            <span>👻 Modo Fantasma</span>
-            <span className={ghostMode ? 'text-green-400 font-bold' : 'text-gray-400'}>
-              {ghostMode ? 'ENCENDIDO' : 'APAGADO'}
+        {/* Username */}
+        <h2 className="text-3xl font-bold text-white text-center mb-3">{user.username}</h2>
+
+        {/* Badges Row */}
+        <div className="flex flex-wrap justify-center gap-2 mb-3">
+          <span className="bg-purple-600 text-white text-xs px-3 py-1 rounded-full font-bold">
+            ARISTOCRAT {user.aristocracy || 9}
+          </span>
+          <span className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white text-xs px-3 py-1 rounded-full font-bold">
+            👑👑👑 Aristocrat IX
+          </span>
+          <span className="bg-blue-500 text-white text-xs px-3 py-1 rounded-full font-bold">
+            Verificado
+          </span>
+          <span className="bg-yellow-500 text-white text-xs px-3 py-1 rounded-full font-bold">
+            👑 Fundador
+          </span>
+          {user.is_admin && (
+            <span className="bg-yellow-600 text-white text-xs px-3 py-1 rounded-full font-bold">
+              ⭐ Admin
             </span>
-          </button>
+          )}
+          <span className="bg-pink-500 text-white text-xs px-3 py-1 rounded-full font-bold">
+            👑 VIP
+          </span>
+          <span className="bg-green-500 text-white text-xs px-3 py-1 rounded-full font-bold">
+            💎 Aristocrat IX
+          </span>
+        </div>
 
-          <button className="w-full bg-purple-800/40 hover:bg-purple-700/50 border-2 border-purple-500/30 text-white py-4 rounded-2xl font-medium transition-all flex items-center justify-between px-6">
-            <span>💰 Billetera</span>
-            <span>→</span>
-          </button>
+        {/* Member Since */}
+        <p className="text-white/80 text-center text-sm">Miembro desde {memberDate}</p>
+      </div>
 
+      {/* Stats Grid */}
+      <div className="px-4 -mt-8">
+        <div className="grid grid-cols-2 gap-3 mb-4">
+          {/* Nivel */}
+          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 text-center">
+            <div className="text-3xl mb-1">⭐</div>
+            <div className="text-gray-500 text-sm">Nivel</div>
+            <div className="text-2xl font-bold text-gray-800">{user.level || 99}</div>
+          </div>
+
+          {/* Monedas */}
+          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 text-center">
+            <div className="text-3xl mb-1">💰</div>
+            <div className="text-gray-500 text-sm">Monedas</div>
+            <div className="text-2xl font-bold text-gray-800">{(user.coins || 0).toLocaleString()}</div>
+          </div>
+
+          {/* Diamantes */}
+          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 text-center">
+            <div className="text-3xl mb-1">💎</div>
+            <div className="text-gray-500 text-sm">Diamantes</div>
+            <div className="text-2xl font-bold text-gray-800">{(user.diamonds || 0).toLocaleString()}</div>
+          </div>
+
+          {/* Total Gastado */}
+          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 text-center">
+            <div className="text-3xl mb-1">💸</div>
+            <div className="text-gray-500 text-sm">Total Gastado</div>
+            <div className="text-2xl font-bold text-gray-800">{(user.total_spent || 0).toLocaleString()}</div>
+          </div>
+
+          {/* Total Recibido */}
+          <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 text-center">
+            <div className="text-3xl mb-1">🎁</div>
+            <div className="text-gray-500 text-sm">Total Recibido</div>
+            <div className="text-2xl font-bold text-gray-800">{(user.total_received || 0).toLocaleString()}</div>
+          </div>
+        </div>
+
+        {/* Configuracion */}
+        <div className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 mb-4">
+          <h3 className="text-lg font-bold text-gray-800 mb-4">Configuracion</h3>
+          
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-gray-700 font-medium">Modo Fantasma</span>
+            <button
+              onClick={toggleGhostMode}
+              className={`px-4 py-1.5 rounded-lg text-sm font-bold ${
+                ghostMode
+                  ? 'bg-green-100 text-green-600'
+                  : 'bg-gray-100 text-gray-500'
+              }`}
+            >
+              {ghostMode ? 'Activado' : 'Desactivado'}
+            </button>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="text-gray-700 font-medium">Rol Especial</span>
+            <span className="bg-pink-100 text-pink-600 px-4 py-1.5 rounded-lg text-sm font-bold">
+              👑 {user.is_admin ? 'Dueño' : 'Usuario'}
+            </span>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="grid grid-cols-2 gap-3 mb-4">
           {user.is_admin && (
             <button
               onClick={() => onNavigate('admin')}
-              className="w-full bg-gradient-to-r from-yellow-500/30 to-orange-500/30 border-2 border-yellow-500/50 text-white py-4 rounded-2xl font-medium transition-all flex items-center justify-between px-6"
+              className="col-span-2 bg-gradient-to-r from-yellow-400 to-orange-500 text-white py-3 rounded-2xl font-bold text-center"
             >
-              <span>👑 Panel de Administración</span>
-              <span>→</span>
+              👑 Panel de Administración
             </button>
           )}
-        </div>
 
-        <button
-          onClick={() => {
-            logout();
-            onBack();
-          }}
-          className="w-full bg-gradient-to-r from-pink-500 to-pink-600 hover:from-pink-600 hover:to-pink-700 text-white py-4 rounded-2xl font-bold transition-all"
-        >
-          🚫 Cerrar Sesión
-        </button>
+          <button className="bg-white border-2 border-cyan-400 text-cyan-500 py-3 rounded-2xl font-bold">
+            Editar Perfil
+          </button>
+
+          <button
+            onClick={() => {
+              logout();
+              onBack();
+            }}
+            className="bg-gradient-to-r from-pink-500 to-red-500 text-white py-3 rounded-2xl font-bold"
+          >
+            Cerrar Sesion
+          </button>
+        </div>
       </div>
     </div>
   );
