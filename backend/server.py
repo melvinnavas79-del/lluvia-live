@@ -80,8 +80,11 @@ async def register(user_data: UserRegister):
         "diamonds": 0,
         "aristocracy": 0,
         "vip_status": "NORMAL",
+        "role": "usuario",
         "is_admin": False,
         "ghost_mode": False,
+        "total_spent": 0,
+        "total_received": 0,
         "badges": ["🌟 Nuevo"],
         "avatar": f"https://api.dicebear.com/7.x/avataaars/svg?seed={user_id}",
         "created_at": datetime.now(timezone.utc).isoformat()
@@ -279,20 +282,97 @@ async def delete_room(room_id: str, owner_id: str):
     await db.rooms.delete_one({"id": room_id})
     return {"success": True}
 
-# ==================== ADMIN ====================
+# ==================== ROLES & ADMIN ====================
+
+# Role hierarchy: dueño > admin > moderador > supervisor > usuario
+ROLE_HIERARCHY = {
+    "dueño": 5,
+    "admin": 4,
+    "moderador": 3,
+    "supervisor": 2,
+    "usuario": 1
+}
+
+ROLE_BADGES = {
+    "dueño": ["👑 Dueño", "🌟 Fundador", "⭐ Admin", "💎 VIP", "✅ Verificado", "💎 Aristocrat IX"],
+    "admin": ["⭐ Admin", "💎 VIP", "✅ Verificado"],
+    "moderador": ["🛡️ Moderador", "✅ Verificado"],
+    "supervisor": ["👁️ Supervisor"],
+    "usuario": ["🌟 Nuevo"]
+}
+
+def has_permission(user_role: str, required_role: str) -> bool:
+    return ROLE_HIERARCHY.get(user_role, 0) >= ROLE_HIERARCHY.get(required_role, 0)
+
+@api_router.post("/admin/set-owner")
+async def set_owner(user_id: str, owner_key: str):
+    if owner_key != "lluvia_owner_melvin":
+        raise HTTPException(status_code=403, detail="Clave inválida")
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "role": "dueño",
+            "is_admin": True,
+            "vip_status": "DUEÑO",
+            "aristocracy": 9,
+            "level": 99,
+            "coins": 999999,
+            "diamonds": 50000,
+            "badges": ROLE_BADGES["dueño"],
+            "ghost_mode": False
+        }}
+    )
+    
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return serialize_user(user)
 
 @api_router.post("/admin/set-admin")
 async def set_admin(user_id: str, admin_key: str):
     if admin_key != "lluvia_admin_2024":
         raise HTTPException(status_code=403, detail="Clave inválida")
     
-    result = await db.users.update_one(
+    await db.users.update_one(
         {"id": user_id},
-        {"$set": {"is_admin": True, "vip_status": "ADMIN", "badges": ["👑 Admin", "🌟 Fundador", "💎 VIP"]}}
+        {"$set": {"is_admin": True, "role": "admin", "vip_status": "ADMIN", "badges": ROLE_BADGES["admin"]}}
     )
     
-    if result.modified_count == 0:
+    user = await db.users.find_one({"id": user_id})
+    if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return serialize_user(user)
+
+@api_router.post("/admin/set-role")
+async def set_role(user_id: str, admin_id: str, role: str):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin:
+        raise HTTPException(status_code=404, detail="Admin no encontrado")
+    
+    admin_role = admin.get('role', 'usuario')
+    if not has_permission(admin_role, 'admin'):
+        raise HTTPException(status_code=403, detail="No tienes permisos")
+    
+    if role not in ROLE_HIERARCHY:
+        raise HTTPException(status_code=400, detail="Rol inválido")
+    
+    # Can't assign role equal or higher than yours (except dueño can do anything)
+    if admin_role != "dueño" and ROLE_HIERARCHY.get(role, 0) >= ROLE_HIERARCHY.get(admin_role, 0):
+        raise HTTPException(status_code=403, detail="No puedes asignar un rol igual o mayor al tuyo")
+    
+    is_admin = role in ["dueño", "admin"]
+    vip_map = {"dueño": "DUEÑO", "admin": "ADMIN", "moderador": "MODERADOR", "supervisor": "SUPERVISOR", "usuario": "NORMAL"}
+    
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {
+            "role": role,
+            "is_admin": is_admin,
+            "vip_status": vip_map.get(role, "NORMAL"),
+            "badges": ROLE_BADGES.get(role, ROLE_BADGES["usuario"])
+        }}
+    )
     
     user = await db.users.find_one({"id": user_id})
     return serialize_user(user)
@@ -300,21 +380,46 @@ async def set_admin(user_id: str, admin_key: str):
 @api_router.get("/admin/users")
 async def admin_get_users(admin_id: str):
     admin = await db.users.find_one({"id": admin_id})
-    if not admin or not admin.get('is_admin', False):
-        raise HTTPException(status_code=403, detail="No tienes permisos de admin")
+    if not admin:
+        raise HTTPException(status_code=403, detail="No tienes permisos")
+    
+    admin_role = admin.get('role', 'usuario')
+    if not has_permission(admin_role, 'supervisor'):
+        raise HTTPException(status_code=403, detail="No tienes permisos")
     
     users = await db.users.find().to_list(500)
     return [serialize_user(u) for u in users]
 
+@api_router.get("/admin/staff")
+async def get_staff(admin_id: str):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin:
+        raise HTTPException(status_code=403, detail="No tienes permisos")
+    
+    admin_role = admin.get('role', 'usuario')
+    if not has_permission(admin_role, 'moderador'):
+        raise HTTPException(status_code=403, detail="No tienes permisos")
+    
+    staff = await db.users.find({"role": {"$in": ["dueño", "admin", "moderador", "supervisor"]}}).to_list(100)
+    return [serialize_user(s) for s in staff]
+
 @api_router.put("/admin/users/{user_id}")
 async def admin_update_user(user_id: str, admin_id: str, updates: Dict[str, Any]):
     admin = await db.users.find_one({"id": admin_id})
-    if not admin or not admin.get('is_admin', False):
-        raise HTTPException(status_code=403, detail="No tienes permisos de admin")
+    if not admin:
+        raise HTTPException(status_code=403, detail="No tienes permisos")
+    
+    admin_role = admin.get('role', 'usuario')
+    if not has_permission(admin_role, 'moderador'):
+        raise HTTPException(status_code=403, detail="No tienes permisos")
     
     updates.pop('password', None)
     updates.pop('_id', None)
     updates.pop('id', None)
+    
+    # Only dueño/admin can change roles
+    if 'role' in updates and not has_permission(admin_role, 'admin'):
+        updates.pop('role', None)
     
     await db.users.update_one({"id": user_id}, {"$set": updates})
     user = await db.users.find_one({"id": user_id})
@@ -323,8 +428,16 @@ async def admin_update_user(user_id: str, admin_id: str, updates: Dict[str, Any]
 @api_router.delete("/admin/users/{user_id}")
 async def admin_delete_user(user_id: str, admin_id: str):
     admin = await db.users.find_one({"id": admin_id})
-    if not admin or not admin.get('is_admin', False):
-        raise HTTPException(status_code=403, detail="No tienes permisos de admin")
+    if not admin:
+        raise HTTPException(status_code=403, detail="No tienes permisos")
+    
+    admin_role = admin.get('role', 'usuario')
+    if not has_permission(admin_role, 'admin'):
+        raise HTTPException(status_code=403, detail="No tienes permisos")
+    
+    target = await db.users.find_one({"id": user_id})
+    if target and target.get('role') == 'dueño':
+        raise HTTPException(status_code=403, detail="No puedes eliminar al dueño")
     
     await db.users.delete_one({"id": user_id})
     return {"success": True}
@@ -332,8 +445,12 @@ async def admin_delete_user(user_id: str, admin_id: str):
 @api_router.delete("/admin/rooms/{room_id}")
 async def admin_delete_room(room_id: str, admin_id: str):
     admin = await db.users.find_one({"id": admin_id})
-    if not admin or not admin.get('is_admin', False):
-        raise HTTPException(status_code=403, detail="No tienes permisos de admin")
+    if not admin:
+        raise HTTPException(status_code=403, detail="No tienes permisos")
+    
+    admin_role = admin.get('role', 'usuario')
+    if not has_permission(admin_role, 'moderador'):
+        raise HTTPException(status_code=403, detail="No tienes permisos")
     
     await db.rooms.delete_one({"id": room_id})
     return {"success": True}
@@ -346,8 +463,9 @@ async def toggle_ghost_mode(user_id: str):
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     
-    if not user.get('is_admin', False):
-        raise HTTPException(status_code=403, detail="Solo el admin puede usar Modo Fantasma")
+    user_role = user.get('role', 'usuario')
+    if not has_permission(user_role, 'admin'):
+        raise HTTPException(status_code=403, detail="Solo admin o dueño puede usar Modo Fantasma")
     
     new_mode = not user.get('ghost_mode', False)
     await db.users.update_one(

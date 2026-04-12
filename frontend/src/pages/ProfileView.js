@@ -139,14 +139,14 @@ const ProfileView = ({ onBack, onNavigate }) => {
           <div className="flex items-center justify-between">
             <span className="text-gray-700 font-medium">Rol Especial</span>
             <span className="bg-pink-100 text-pink-600 px-4 py-1.5 rounded-lg text-sm font-bold">
-              👑 {user.is_admin ? 'Dueño' : 'Usuario'}
+              👑 {user.role === 'dueño' ? 'Dueño' : user.role === 'admin' ? 'Admin' : user.role === 'moderador' ? 'Moderador' : user.role === 'supervisor' ? 'Supervisor' : 'Usuario'}
             </span>
           </div>
         </div>
 
         {/* Action Buttons */}
         <div className="grid grid-cols-2 gap-3 mb-4">
-          {user.is_admin && (
+        {(user.is_admin || user.role === 'dueño' || user.role === 'admin' || user.role === 'moderador' || user.role === 'supervisor') && (
             <button
               onClick={() => onNavigate('admin')}
               className="col-span-2 bg-gradient-to-r from-yellow-400 to-orange-500 text-white py-3 rounded-2xl font-bold text-center"
