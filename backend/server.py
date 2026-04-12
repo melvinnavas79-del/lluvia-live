@@ -669,15 +669,25 @@ async def get_entry_animation(user_id: str):
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
     arist = user.get('aristocracy', 0)
     level = user.get('level', 1)
-    if arist >= 9 or level >= 90:
-        return {"animation": "dragon", "emoji": "🐉", "text": "¡EL DRAGÓN HA LLEGADO!", "color": "gold"}
+    role = user.get('role', 'usuario')
+    
+    if role == 'dueño':
+        return {"animation": "storm", "emoji": "⛈️☔", "text": "⛈️ ¡LA TORMENTA DE LLUVIA LIVE! ☔ ¡EL DUEÑO HA LLEGADO!", "color": "gold", "special": True}
+    elif arist >= 9 or level >= 90:
+        return {"animation": "dragon", "emoji": "🐉", "text": "🐉 ¡EL DRAGÓN SUPREMO HA LLEGADO! 🐉", "color": "gold", "special": True}
+    elif arist >= 8 or level >= 80:
+        return {"animation": "phoenix", "emoji": "🔥🦅", "text": "🔥 ¡EL FÉNIX RENACE EN LA SALA! 🔥", "color": "red", "special": True}
     elif arist >= 7 or level >= 70:
-        return {"animation": "eagle", "emoji": "🦅", "text": "¡EL ÁGUILA HA ATERRIZADO!", "color": "silver"}
+        return {"animation": "lion", "emoji": "🦁", "text": "🦁 ¡EL LEÓN DE LA SELVA HA RUGIDO! 🦁", "color": "orange", "special": True}
+    elif arist >= 6 or level >= 60:
+        return {"animation": "tiger", "emoji": "🐅", "text": "🐅 ¡EL TIGRE ACECHA LA SALA! 🐅", "color": "amber", "special": True}
     elif arist >= 5 or level >= 50:
-        return {"animation": "fire", "emoji": "🔥", "text": "¡FUEGO EN LA SALA!", "color": "orange"}
+        return {"animation": "eagle", "emoji": "🦅", "text": "🦅 ¡EL ÁGUILA HA ATERRIZADO! 🦅", "color": "silver", "special": True}
     elif arist >= 3 or level >= 30:
-        return {"animation": "star", "emoji": "⭐", "text": "¡Una estrella llega!", "color": "blue"}
-    return {"animation": "none", "emoji": "👋", "text": f"{user['username']} entró a la sala", "color": "gray"}
+        return {"animation": "fire", "emoji": "🔥", "text": "🔥 ¡Fuego en la sala!", "color": "orange", "special": False}
+    elif arist >= 1 or level >= 10:
+        return {"animation": "star", "emoji": "⭐", "text": f"⭐ {user['username']} llega con estilo", "color": "blue", "special": False}
+    return {"animation": "none", "emoji": "👋", "text": f"👋 {user['username']} entró a la sala", "color": "gray", "special": False}
 
 # ==================== REELS ====================
 
@@ -1103,7 +1113,183 @@ async def play_carta_mayor(bet: CardBet):
         "new_balance": updated_user['coins']
     }
 
-# ==================== FILE UPLOAD ====================
+# ==================== SLOT MACHINE 777 ====================
+
+@api_router.post("/games/slot-machine")
+async def play_slot_machine(bet: GameBet):
+    user = await db.users.find_one({"id": bet.user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if user['coins'] < bet.bet_amount:
+        raise HTTPException(status_code=400, detail="No tienes suficientes monedas")
+    if bet.bet_amount < 100:
+        raise HTTPException(status_code=400, detail="Apuesta mínima: 100")
+
+    symbols = ['7️⃣', '💎', '🍒', '🔔', '⭐', '🍋', '🍊', '🃏']
+    weights = [5, 8, 15, 12, 10, 20, 20, 10]
+    
+    reel1 = random.choices(symbols, weights=weights, k=1)[0]
+    reel2 = random.choices(symbols, weights=weights, k=1)[0]
+    reel3 = random.choices(symbols, weights=weights, k=1)[0]
+    
+    combo = f"{reel1}{reel2}{reel3}"
+    
+    payouts = {
+        '7️⃣7️⃣7️⃣': (50, 'MEGA JACKPOT 777'),
+        '💎💎💎': (25, 'DIAMOND RUSH'),
+        '🍒🍒🍒': (10, 'CHERRY BLAST'),
+        '🔔🔔🔔': (8, 'BELL RINGER'),
+        '⭐⭐⭐': (15, 'STAR POWER'),
+        '🍋🍋🍋': (5, 'LEMON DROP'),
+        '🍊🍊🍊': (5, 'ORANGE CRUSH'),
+        '🃏🃏🃏': (20, 'WILD CARD'),
+    }
+    
+    multiplier = 0
+    jackpot_name = None
+    
+    if combo in payouts:
+        multiplier, jackpot_name = payouts[combo]
+    elif reel1 == reel2 or reel2 == reel3 or reel1 == reel3:
+        multiplier = 2
+        jackpot_name = "PAR"
+    
+    winnings = int(bet.bet_amount * multiplier)
+    net = winnings - bet.bet_amount
+    
+    await db.users.update_one({"id": bet.user_id}, {"$inc": {"coins": net}})
+    updated_user = await db.users.find_one({"id": bet.user_id})
+    
+    return {
+        "reels": [reel1, reel2, reel3],
+        "multiplier": multiplier,
+        "jackpot_name": jackpot_name,
+        "bet": bet.bet_amount,
+        "winnings": winnings,
+        "net": net,
+        "new_balance": updated_user['coins']
+    }
+
+# ==================== GIFTS (REGALOS) ====================
+
+class GiftSend(BaseModel):
+    sender_id: str
+    receiver_id: str
+    gift_type: str
+    room_id: str = ""
+
+GIFTS = {
+    "rosa": {"name": "Rosa", "emoji": "🌹", "cost": 100, "value": 80},
+    "corazon": {"name": "Corazón", "emoji": "❤️", "cost": 500, "value": 400},
+    "diamante": {"name": "Diamante", "emoji": "💎", "cost": 5000, "value": 4000},
+    "corona": {"name": "Corona", "emoji": "👑", "cost": 10000, "value": 8000},
+    "dragon": {"name": "Dragón", "emoji": "🐉", "cost": 50000, "value": 40000},
+    "castillo": {"name": "Castillo", "emoji": "🏰", "cost": 100000, "value": 80000},
+    "lluvia_oro": {"name": "Lluvia de Oro", "emoji": "🌧️💰", "cost": 500000, "value": 400000},
+    "mega_crown": {"name": "Mega Corona", "emoji": "👑💎", "cost": 1000000, "value": 800000},
+}
+
+@api_router.get("/gifts")
+async def get_gifts():
+    return GIFTS
+
+@api_router.post("/gifts/send")
+async def send_gift(gift: GiftSend):
+    if gift.gift_type not in GIFTS:
+        raise HTTPException(status_code=400, detail="Regalo no válido")
+    
+    g = GIFTS[gift.gift_type]
+    sender = await db.users.find_one({"id": gift.sender_id})
+    if not sender:
+        raise HTTPException(status_code=404, detail="Sender no encontrado")
+    if sender['coins'] < g['cost']:
+        raise HTTPException(status_code=400, detail="No tienes suficientes monedas")
+    
+    receiver = await db.users.find_one({"id": gift.receiver_id})
+    if not receiver:
+        raise HTTPException(status_code=404, detail="Receiver no encontrado")
+    
+    # Deduct from sender, add to receiver
+    await db.users.update_one({"id": gift.sender_id}, {"$inc": {"coins": -g['cost'], "total_spent": g['cost']}})
+    await db.users.update_one({"id": gift.receiver_id}, {"$inc": {"coins": g['value'], "total_received": g['value']}})
+    
+    # Log gift
+    gift_doc = {
+        "id": str(uuid.uuid4()),
+        "sender_id": gift.sender_id,
+        "sender_name": sender['username'],
+        "receiver_id": gift.receiver_id,
+        "receiver_name": receiver['username'],
+        "gift_type": gift.gift_type,
+        "gift_name": g['name'],
+        "gift_emoji": g['emoji'],
+        "cost": g['cost'],
+        "value": g['value'],
+        "room_id": gift.room_id,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.gifts.insert_one(gift_doc)
+    
+    # Add to chat if in room
+    if gift.room_id:
+        chat_doc = {
+            "id": str(uuid.uuid4()),
+            "room_id": gift.room_id,
+            "user_id": gift.sender_id,
+            "username": sender['username'],
+            "avatar": sender['avatar'],
+            "text": f"{g['emoji']} {sender['username']} envió {g['name']} a {receiver['username']} {g['emoji']}",
+            "type": "gift",
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+        await db.room_chat.insert_one(chat_doc)
+    
+    updated_sender = await db.users.find_one({"id": gift.sender_id})
+    
+    gift_doc.pop('_id', None)
+    return {"success": True, "gift": gift_doc, "new_balance": updated_sender['coins']}
+
+# ==================== ID SYSTEM ====================
+
+class IDChange(BaseModel):
+    user_id: str
+    new_id: str
+    tier: str
+
+@api_router.post("/users/change-id")
+async def change_user_id(data: IDChange):
+    user = await db.users.find_one({"id": data.user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    tiers = {
+        "basic": {"cost": 30, "min_len": 6, "max_len": 7, "type": "numbers"},
+        "lindo": {"cost": 1500, "min_len": 5, "max_len": 5, "type": "numbers"},
+        "letras": {"cost": 3000, "min_len": 4, "max_len": 5, "type": "letters"},
+        "custom": {"cost": 5000, "min_len": 1, "max_len": 20, "type": "any"},
+    }
+    
+    if data.tier not in tiers:
+        raise HTTPException(status_code=400, detail="Tier inválido")
+    
+    tier = tiers[data.tier]
+    
+    if user.get('diamonds', 0) < tier['cost']:
+        raise HTTPException(status_code=400, detail=f"Necesitas {tier['cost']} diamantes")
+    
+    if len(data.new_id) < tier['min_len'] or len(data.new_id) > tier['max_len']:
+        raise HTTPException(status_code=400, detail=f"ID debe tener {tier['min_len']}-{tier['max_len']} caracteres")
+    
+    existing = await db.users.find_one({"custom_id": data.new_id})
+    if existing:
+        raise HTTPException(status_code=400, detail="ID ya está en uso")
+    
+    await db.users.update_one(
+        {"id": data.user_id},
+        {"$inc": {"diamonds": -tier['cost']}, "$set": {"custom_id": data.new_id}}
+    )
+    
+    return {"success": True, "new_custom_id": data.new_id, "cost": tier['cost']}
 
 @api_router.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
@@ -1184,14 +1370,22 @@ async def welcome_message(room_id: str, user_id: str):
     # Get entry animation
     arist = user.get('aristocracy', 0)
     level = user.get('level', 1)
-    if arist >= 9 or level >= 90:
-        entry = "🐉 ¡EL DRAGÓN HA LLEGADO!"
+    role = user.get('role', 'usuario')
+    
+    if role == 'dueño':
+        entry = "⛈️☔ ¡LA TORMENTA DE LLUVIA LIVE! ¡EL DUEÑO HA LLEGADO! ☔⛈️"
+    elif arist >= 9 or level >= 90:
+        entry = "🐉 ¡EL DRAGÓN SUPREMO HA LLEGADO! 🐉"
+    elif arist >= 8 or level >= 80:
+        entry = "🔥🦅 ¡EL FÉNIX RENACE EN LA SALA! 🔥"
     elif arist >= 7 or level >= 70:
-        entry = "🦅 ¡EL ÁGUILA HA ATERRIZADO!"
+        entry = "🦁 ¡EL LEÓN DE LA SELVA HA RUGIDO! 🦁"
+    elif arist >= 6 or level >= 60:
+        entry = "🐅 ¡EL TIGRE ACECHA LA SALA! 🐅"
     elif arist >= 5 or level >= 50:
-        entry = "🔥 ¡FUEGO EN LA SALA!"
+        entry = "🦅 ¡EL ÁGUILA HA ATERRIZADO! 🦅"
     else:
-        entry = f"👋 ¡Bienvenido/a!"
+        entry = "👋 ¡Bienvenido/a!"
     
     welcome_doc = {
         "id": str(uuid.uuid4()),

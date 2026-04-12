@@ -4,7 +4,7 @@ import { useUser } from '../contexts/UserContext';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-const GamesView = ({ onBack }) => {
+const GamesView = ({ onBack, onNavigate }) => {
   const { user, updateUser } = useUser();
   const [selectedGame, setSelectedGame] = useState(null);
   const [betAmount, setBetAmount] = useState(500);
@@ -15,7 +15,8 @@ const GamesView = ({ onBack }) => {
   const [cardGuess, setCardGuess] = useState(null);
 
   const games = [
-    { id: 'ruleta', name: 'Ruleta de la Suerte', icon: '🎰', color: 'from-yellow-500 to-orange-600', desc: 'Gira y gana hasta x10' },
+    { id: 'slots', name: 'Lluvia 777', icon: '🎰', color: 'from-red-700 to-yellow-600', desc: 'Tragamonedas Casino Real', special: true },
+    { id: 'ruleta', name: 'Ruleta de la Suerte', icon: '🎡', color: 'from-yellow-500 to-orange-600', desc: 'Gira y gana hasta x10' },
     { id: 'dados', name: 'Dados', icon: '🎲', color: 'from-red-500 to-pink-600', desc: 'Tira dados y gana' },
     { id: 'rps', name: 'Piedra, Papel, Tijera', icon: '✊', color: 'from-green-500 to-emerald-600', desc: 'Juega contra la máquina' },
     { id: 'trivia', name: 'Trivia', icon: '❓', color: 'from-blue-500 to-indigo-600', desc: 'Responde y gana x3' },
@@ -310,8 +311,14 @@ const GamesView = ({ onBack }) => {
               {games.map(game => (
                 <button
                   key={game.id}
-                  onClick={() => { setSelectedGame(game.id); resetGame(); }}
-                  className={`bg-gradient-to-r ${game.color} rounded-2xl p-6 text-left hover:scale-105 transition-all`}
+                  onClick={() => { 
+                    if (game.id === 'slots' && onNavigate) {
+                      onNavigate('slots');
+                    } else {
+                      setSelectedGame(game.id); resetGame(); 
+                    }
+                  }}
+                  className={`bg-gradient-to-r ${game.color} rounded-2xl p-6 text-left hover:scale-105 transition-all ${game.special ? 'col-span-1 md:col-span-2 border-2 border-yellow-400' : ''}`}
                 >
                   <div className="text-5xl mb-3">{game.icon}</div>
                   <h3 className="text-xl font-bold text-white mb-1">{game.name}</h3>

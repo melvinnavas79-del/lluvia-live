@@ -33,11 +33,12 @@ const LoginPage = ({ onLogin }) => {
       <div className="w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-12">
-          <div className="flex justify-center gap-8 mb-6">
-            <div className="text-7xl">☂️</div>
-            <div className="text-7xl">💧</div>
+          <div className="flex justify-center mb-6">
+            <div className="w-32 h-32 bg-gradient-to-br from-cyan-400 to-blue-600 rounded-full flex items-center justify-center shadow-2xl shadow-cyan-500/30">
+              <span className="text-7xl">☔</span>
+            </div>
           </div>
-          <h1 className="text-6xl font-bold text-pink-500 mb-3">Lluvia Live</h1>
+          <h1 className="text-5xl font-bold text-white mb-3" style={{textShadow: '0 0 30px rgba(236,72,153,0.5)'}}>Lluvia Live</h1>
           <p className="text-gray-300 text-xl">Conecta, Chatea, Vive</p>
         </div>
 

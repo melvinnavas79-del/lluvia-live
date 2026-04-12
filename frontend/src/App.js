@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import RoomView from './pages/RoomView';
 import ProfileView from './pages/ProfileView';
 import GamesView from './pages/GamesView';
+import SlotMachine from './pages/SlotMachine';
 import AdminPanel from './pages/AdminPanel';
 import ReelsView from './pages/ReelsView';
 import PhotosView from './pages/PhotosView';
@@ -44,7 +45,11 @@ function AppContent() {
   }
 
   if (currentView === 'games') {
-    return <GamesView onBack={() => setCurrentView('dashboard')} />;
+    return <GamesView onBack={() => setCurrentView('dashboard')} onNavigate={handleNavigate} />;
+  }
+
+  if (currentView === 'slots') {
+    return <SlotMachine onBack={() => setCurrentView('games')} />;
   }
 
   if (currentView === 'admin') {
