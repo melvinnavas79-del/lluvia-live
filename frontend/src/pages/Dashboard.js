@@ -77,7 +77,7 @@ const Dashboard = ({ onNavigate }) => {
           ].map(tab => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => tab.id === 'juegos' ? onNavigate('games') : setActiveTab(tab.id)}
               className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all ${
                 activeTab === tab.id
                   ? 'bg-pink-500 text-white'

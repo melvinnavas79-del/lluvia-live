@@ -10,6 +10,7 @@ from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone
 import bcrypt
+import random
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
@@ -121,16 +122,19 @@ async def update_user(user_id: str, updates: Dict[str, Any]):
     
     user = await db.users.find_one({"id": user_id})
     
-    # Check for Bebé Robot prize (15M after reaching 70M)
-    if user.get('coins', 0) >= 70000000:
-        last_prize = user.get('last_baby_robot_prize', 0)
-        if user['coins'] - last_prize >= 70000000:
-            await db.users.update_one(
-                {"id": user_id},
-                {"$inc": {"coins": 15000000}, "$set": {"last_baby_robot_prize": user['coins']}}
-            )
-            user = await db.users.find_one({"id": user_id})
-            user['baby_robot_awarded'] = True
+    # Check for Bebé Robot prize (15M when room owner reaches 50M)
+    if user.get('coins', 0) >= 50000000:
+        # Check if user owns a room
+        owned_room = await db.rooms.find_one({"owner_id": user_id})
+        if owned_room:
+            last_prize = user.get('last_baby_robot_prize', 0)
+            if user['coins'] - last_prize >= 50000000:
+                await db.users.update_one(
+                    {"id": user_id},
+                    {"$inc": {"coins": 15000000}, "$set": {"last_baby_robot_prize": user['coins']}}
+                )
+                user = await db.users.find_one({"id": user_id})
+                user['baby_robot_awarded'] = True
     
     return serialize_user(user)
 
@@ -155,6 +159,16 @@ async def create_room(room_data: RoomCreate, owner_id: str):
     }
     
     await db.rooms.insert_one(room_doc)
+    
+    # Check Bebé Robot prize when creating room (if owner has 50M+)
+    if owner.get('coins', 0) >= 50000000:
+        last_prize = owner.get('last_baby_robot_prize', 0)
+        if owner['coins'] - last_prize >= 50000000:
+            await db.users.update_one(
+                {"id": owner_id},
+                {"$inc": {"coins": 15000000}, "$set": {"last_baby_robot_prize": owner['coins']}}
+            )
+    
     return serialize_room(room_doc)
 
 @api_router.get("/rooms")
@@ -274,6 +288,282 @@ async def get_coins_ranking():
 async def get_level_ranking():
     users = await db.users.find().sort("level", -1).limit(50).to_list(50)
     return [serialize_user(u) for u in users]
+
+# ==================== GAMES ====================
+
+class GameBet(BaseModel):
+    user_id: str
+    bet_amount: int
+
+class RPSBet(BaseModel):
+    user_id: str
+    bet_amount: int
+    choice: str  # piedra, papel, tijera
+
+class TriviaBet(BaseModel):
+    user_id: str
+    bet_amount: int
+    answer_index: int
+
+class CardBet(BaseModel):
+    user_id: str
+    bet_amount: int
+    guess: str  # mayor, menor
+
+TRIVIA_QUESTIONS = [
+    {"question": "¿Cuál es el planeta más grande del sistema solar?", "options": ["Tierra", "Júpiter", "Saturno", "Marte"], "correct": 1},
+    {"question": "¿En qué año llegó el hombre a la Luna?", "options": ["1965", "1969", "1972", "1968"], "correct": 1},
+    {"question": "¿Cuál es el océano más grande?", "options": ["Atlántico", "Índico", "Pacífico", "Ártico"], "correct": 2},
+    {"question": "¿Cuántos continentes hay?", "options": ["5", "6", "7", "8"], "correct": 2},
+    {"question": "¿Cuál es el animal más rápido?", "options": ["León", "Guepardo", "Águila", "Caballo"], "correct": 1},
+    {"question": "¿Cuál es el río más largo del mundo?", "options": ["Nilo", "Amazonas", "Misisipi", "Yangtsé"], "correct": 0},
+    {"question": "¿Quién pintó la Mona Lisa?", "options": ["Miguel Ángel", "Da Vinci", "Rafael", "Botticelli"], "correct": 1},
+    {"question": "¿Cuál es el metal más caro?", "options": ["Oro", "Platino", "Rodio", "Plata"], "correct": 2},
+    {"question": "¿Cuántos huesos tiene el cuerpo humano?", "options": ["186", "206", "226", "256"], "correct": 1},
+    {"question": "¿Cuál es el país más grande del mundo?", "options": ["China", "Canadá", "Rusia", "EE.UU."], "correct": 2},
+]
+
+@api_router.post("/games/ruleta")
+async def play_ruleta(bet: GameBet):
+    user = await db.users.find_one({"id": bet.user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if user['coins'] < bet.bet_amount:
+        raise HTTPException(status_code=400, detail="No tienes suficientes monedas")
+    if bet.bet_amount < 100:
+        raise HTTPException(status_code=400, detail="Apuesta mínima: 100")
+
+    prizes = [
+        {"multiplier": 0, "label": "Sin suerte", "chance": 30},
+        {"multiplier": 1.5, "label": "x1.5", "chance": 25},
+        {"multiplier": 2, "label": "x2", "chance": 20},
+        {"multiplier": 3, "label": "x3", "chance": 15},
+        {"multiplier": 5, "label": "x5", "chance": 7},
+        {"multiplier": 10, "label": "JACKPOT x10", "chance": 3},
+    ]
+    
+    roll = random.randint(1, 100)
+    cumulative = 0
+    selected = prizes[0]
+    for p in prizes:
+        cumulative += p["chance"]
+        if roll <= cumulative:
+            selected = p
+            break
+    
+    winnings = int(bet.bet_amount * selected["multiplier"])
+    net = winnings - bet.bet_amount
+    
+    await db.users.update_one(
+        {"id": bet.user_id},
+        {"$inc": {"coins": net}}
+    )
+    
+    updated_user = await db.users.find_one({"id": bet.user_id})
+    
+    return {
+        "result": selected["label"],
+        "multiplier": selected["multiplier"],
+        "bet": bet.bet_amount,
+        "winnings": winnings,
+        "net": net,
+        "new_balance": updated_user['coins']
+    }
+
+@api_router.post("/games/dados")
+async def play_dados(bet: GameBet):
+    user = await db.users.find_one({"id": bet.user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if user['coins'] < bet.bet_amount:
+        raise HTTPException(status_code=400, detail="No tienes suficientes monedas")
+    if bet.bet_amount < 100:
+        raise HTTPException(status_code=400, detail="Apuesta mínima: 100")
+
+    dice1 = random.randint(1, 6)
+    dice2 = random.randint(1, 6)
+    total = dice1 + dice2
+    
+    if total >= 10:
+        multiplier = 3
+        result = "GRAN VICTORIA"
+    elif total >= 7:
+        multiplier = 2
+        result = "Victoria"
+    elif total == 7:
+        multiplier = 1.5
+        result = "Empate"
+    else:
+        multiplier = 0
+        result = "Perdiste"
+    
+    winnings = int(bet.bet_amount * multiplier)
+    net = winnings - bet.bet_amount
+    
+    await db.users.update_one(
+        {"id": bet.user_id},
+        {"$inc": {"coins": net}}
+    )
+    
+    updated_user = await db.users.find_one({"id": bet.user_id})
+    
+    return {
+        "dice1": dice1,
+        "dice2": dice2,
+        "total": total,
+        "result": result,
+        "multiplier": multiplier,
+        "bet": bet.bet_amount,
+        "winnings": winnings,
+        "net": net,
+        "new_balance": updated_user['coins']
+    }
+
+@api_router.post("/games/piedra-papel-tijera")
+async def play_rps(bet: RPSBet):
+    user = await db.users.find_one({"id": bet.user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if user['coins'] < bet.bet_amount:
+        raise HTTPException(status_code=400, detail="No tienes suficientes monedas")
+    if bet.bet_amount < 100:
+        raise HTTPException(status_code=400, detail="Apuesta mínima: 100")
+
+    choices = ["piedra", "papel", "tijera"]
+    if bet.choice not in choices:
+        raise HTTPException(status_code=400, detail="Opción inválida")
+    
+    computer = random.choice(choices)
+    
+    if bet.choice == computer:
+        result = "empate"
+        multiplier = 1
+    elif (bet.choice == "piedra" and computer == "tijera") or \
+         (bet.choice == "papel" and computer == "piedra") or \
+         (bet.choice == "tijera" and computer == "papel"):
+        result = "ganaste"
+        multiplier = 2
+    else:
+        result = "perdiste"
+        multiplier = 0
+    
+    winnings = int(bet.bet_amount * multiplier)
+    net = winnings - bet.bet_amount
+    
+    await db.users.update_one(
+        {"id": bet.user_id},
+        {"$inc": {"coins": net}}
+    )
+    
+    updated_user = await db.users.find_one({"id": bet.user_id})
+    
+    return {
+        "player_choice": bet.choice,
+        "computer_choice": computer,
+        "result": result,
+        "multiplier": multiplier,
+        "bet": bet.bet_amount,
+        "winnings": winnings,
+        "net": net,
+        "new_balance": updated_user['coins']
+    }
+
+@api_router.get("/games/trivia/question")
+async def get_trivia_question():
+    q = random.choice(TRIVIA_QUESTIONS)
+    return {
+        "question": q["question"],
+        "options": q["options"],
+        "question_id": TRIVIA_QUESTIONS.index(q)
+    }
+
+@api_router.post("/games/trivia")
+async def play_trivia(bet: TriviaBet):
+    user = await db.users.find_one({"id": bet.user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if user['coins'] < bet.bet_amount:
+        raise HTTPException(status_code=400, detail="No tienes suficientes monedas")
+    if bet.bet_amount < 100:
+        raise HTTPException(status_code=400, detail="Apuesta mínima: 100")
+
+    q = random.choice(TRIVIA_QUESTIONS)
+    correct = q["correct"] == bet.answer_index
+    
+    multiplier = 3 if correct else 0
+    winnings = int(bet.bet_amount * multiplier)
+    net = winnings - bet.bet_amount
+    
+    await db.users.update_one(
+        {"id": bet.user_id},
+        {"$inc": {"coins": net}}
+    )
+    
+    updated_user = await db.users.find_one({"id": bet.user_id})
+    
+    return {
+        "correct": correct,
+        "correct_answer": q["options"][q["correct"]],
+        "result": "Correcto x3" if correct else "Incorrecto",
+        "multiplier": multiplier,
+        "bet": bet.bet_amount,
+        "winnings": winnings,
+        "net": net,
+        "new_balance": updated_user['coins']
+    }
+
+@api_router.post("/games/carta-mayor")
+async def play_carta_mayor(bet: CardBet):
+    user = await db.users.find_one({"id": bet.user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    if user['coins'] < bet.bet_amount:
+        raise HTTPException(status_code=400, detail="No tienes suficientes monedas")
+    if bet.bet_amount < 100:
+        raise HTTPException(status_code=400, detail="Apuesta mínima: 100")
+    if bet.guess not in ["mayor", "menor"]:
+        raise HTTPException(status_code=400, detail="Opción inválida")
+
+    cards = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
+    card_values = {"A": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10, "J": 11, "Q": 12, "K": 13}
+    
+    card1 = random.choice(cards)
+    card2 = random.choice(cards)
+    
+    val1 = card_values[card1]
+    val2 = card_values[card2]
+    
+    if val1 == val2:
+        correct = False
+        result = "Empate - Pierdes"
+    elif bet.guess == "mayor":
+        correct = val2 > val1
+    else:
+        correct = val2 < val1
+    
+    multiplier = 2 if correct else 0
+    winnings = int(bet.bet_amount * multiplier)
+    net = winnings - bet.bet_amount
+    
+    await db.users.update_one(
+        {"id": bet.user_id},
+        {"$inc": {"coins": net}}
+    )
+    
+    updated_user = await db.users.find_one({"id": bet.user_id})
+    
+    return {
+        "card1": card1,
+        "card2": card2,
+        "guess": bet.guess,
+        "correct": correct,
+        "result": "Ganaste x2" if correct else "Perdiste",
+        "multiplier": multiplier,
+        "bet": bet.bet_amount,
+        "winnings": winnings,
+        "net": net,
+        "new_balance": updated_user['coins']
+    }
 
 # ==================== SETUP ====================
 

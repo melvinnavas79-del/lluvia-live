@@ -262,6 +262,132 @@ class LluviaLiveAPITester:
             return True
         return False
 
+    def test_game_ruleta(self):
+        """Test Ruleta game"""
+        if not self.test_user_id:
+            print("❌ No test user ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Game: Ruleta",
+            "POST",
+            "games/ruleta",
+            200,
+            data={"user_id": self.test_user_id, "bet_amount": 500}
+        )
+        
+        if success and 'result' in response and 'new_balance' in response:
+            print(f"✅ Ruleta result: {response['result']}, net: {response.get('net', 0)}")
+            return True
+        return False
+
+    def test_game_dados(self):
+        """Test Dados game"""
+        if not self.test_user_id:
+            print("❌ No test user ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Game: Dados",
+            "POST",
+            "games/dados",
+            200,
+            data={"user_id": self.test_user_id, "bet_amount": 500}
+        )
+        
+        if success and 'dice1' in response and 'dice2' in response and 'new_balance' in response:
+            print(f"✅ Dados result: {response['dice1']} + {response['dice2']} = {response['total']}, result: {response['result']}")
+            return True
+        return False
+
+    def test_game_rps(self):
+        """Test Piedra Papel Tijera game"""
+        if not self.test_user_id:
+            print("❌ No test user ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Game: Piedra Papel Tijera",
+            "POST",
+            "games/piedra-papel-tijera",
+            200,
+            data={"user_id": self.test_user_id, "bet_amount": 500, "choice": "piedra"}
+        )
+        
+        if success and 'player_choice' in response and 'computer_choice' in response and 'new_balance' in response:
+            print(f"✅ RPS result: {response['player_choice']} vs {response['computer_choice']}, result: {response['result']}")
+            return True
+        return False
+
+    def test_game_trivia_question(self):
+        """Test getting trivia question"""
+        success, response = self.run_test(
+            "Game: Trivia Question",
+            "GET",
+            "games/trivia/question",
+            200
+        )
+        
+        if success and 'question' in response and 'options' in response:
+            print(f"✅ Trivia question loaded: {response['question'][:50]}...")
+            return True
+        return False
+
+    def test_game_trivia(self):
+        """Test Trivia game"""
+        if not self.test_user_id:
+            print("❌ No test user ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Game: Trivia",
+            "POST",
+            "games/trivia",
+            200,
+            data={"user_id": self.test_user_id, "bet_amount": 500, "answer_index": 1}
+        )
+        
+        if success and 'correct' in response and 'new_balance' in response:
+            print(f"✅ Trivia result: {'Correct' if response['correct'] else 'Incorrect'}, answer: {response.get('correct_answer', 'N/A')}")
+            return True
+        return False
+
+    def test_game_carta_mayor(self):
+        """Test Carta Mayor game"""
+        if not self.test_user_id:
+            print("❌ No test user ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Game: Carta Mayor",
+            "POST",
+            "games/carta-mayor",
+            200,
+            data={"user_id": self.test_user_id, "bet_amount": 500, "guess": "mayor"}
+        )
+        
+        if success and 'card1' in response and 'card2' in response and 'new_balance' in response:
+            print(f"✅ Carta Mayor result: {response['card1']} → {response['card2']}, guess: {response['guess']}, result: {response['result']}")
+            return True
+        return False
+
+    def test_games_insufficient_coins(self):
+        """Test games with insufficient coins"""
+        if not self.test_user_id:
+            print("❌ No test user ID available")
+            return False
+            
+        # Try to bet more than user has
+        success, response = self.run_test(
+            "Game: Insufficient Coins",
+            "POST",
+            "games/ruleta",
+            400,
+            data={"user_id": self.test_user_id, "bet_amount": 999999}
+        )
+        
+        return success  # Should return 400 for insufficient coins
+
 def main():
     print("🌧️ Starting Lluvia Live API Tests...")
     tester = LluviaLiveAPITester()
@@ -295,6 +421,16 @@ def main():
     
     # Test rankings
     tester.test_rankings()
+    
+    # Test games
+    print(f"\n🎮 Testing Games...")
+    tester.test_game_ruleta()
+    tester.test_game_dados()
+    tester.test_game_rps()
+    tester.test_game_trivia_question()
+    tester.test_game_trivia()
+    tester.test_game_carta_mayor()
+    tester.test_games_insufficient_coins()
     
     # Print results
     print(f"\n📊 Test Results:")

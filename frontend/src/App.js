@@ -5,6 +5,7 @@ import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
 import RoomView from './pages/RoomView';
 import ProfileView from './pages/ProfileView';
+import GamesView from './pages/GamesView';
 
 function AppContent() {
   const { isAuthenticated, login } = useUser();
@@ -43,6 +44,14 @@ function AppContent() {
   if (currentView === 'profile') {
     return (
       <ProfileView
+        onBack={() => setCurrentView('dashboard')}
+      />
+    );
+  }
+
+  if (currentView === 'games') {
+    return (
+      <GamesView
         onBack={() => setCurrentView('dashboard')}
       />
     );
