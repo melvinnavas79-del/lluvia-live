@@ -1,4 +1,5 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File
+from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -11,8 +12,11 @@ import uuid
 from datetime import datetime, timezone
 import bcrypt
 import random
+import shutil
 
 ROOT_DIR = Path(__file__).parent
+UPLOAD_DIR = ROOT_DIR / "uploads"
+UPLOAD_DIR.mkdir(exist_ok=True)
 load_dotenv(ROOT_DIR / '.env')
 
 mongo_url = os.environ['MONGO_URL']
@@ -899,9 +903,32 @@ async def play_carta_mayor(bet: CardBet):
         "new_balance": updated_user['coins']
     }
 
+# ==================== FILE UPLOAD ====================
+
+@api_router.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    ext = file.filename.split('.')[-1].lower() if '.' in file.filename else 'bin'
+    allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'mp4', 'mov', 'avi', 'webm', 'mp3', 'wav']
+    if ext not in allowed:
+        raise HTTPException(status_code=400, detail=f"Formato no soportado. Usa: {', '.join(allowed)}")
+    
+    file_id = str(uuid.uuid4())
+    filename = f"{file_id}.{ext}"
+    filepath = UPLOAD_DIR / filename
+    
+    with open(filepath, "wb") as f:
+        content = await file.read()
+        f.write(content)
+    
+    file_url = f"/api/uploads/{filename}"
+    return {"success": True, "url": file_url, "filename": filename}
+
 # ==================== SETUP ====================
 
 app.include_router(api_router)
+
+# Serve uploaded files
+app.mount("/api/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
 
 app.add_middleware(
     CORSMiddleware,

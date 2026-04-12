@@ -119,7 +119,7 @@ const AdminPanel = ({ onBack }) => {
     }
   };
 
-  // Not authorized yet
+  // Not authorized yet - SECURITY LOCK
   if (!isAdmin && !isOwner) {
     return (
       <div className="min-h-screen bg-gray-50 p-4">
@@ -128,47 +128,37 @@ const AdminPanel = ({ onBack }) => {
             ← Volver
           </button>
 
-          {/* Owner Key */}
-          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-4">
-            <div className="text-center mb-4">
-              <div className="text-5xl mb-2">👑</div>
-              <h2 className="text-xl font-bold text-gray-800">Activar como DUEÑO</h2>
-              <p className="text-gray-500 text-sm">Control total de la app</p>
-            </div>
+          <div className="bg-white rounded-2xl p-8 shadow-sm border border-gray-100 text-center">
+            <div className="text-6xl mb-4">🔒</div>
+            <h2 className="text-2xl font-bold text-gray-800 mb-2">Acceso Restringido</h2>
+            <p className="text-gray-500 mb-6">Solo el dueño de la aplicación puede acceder a este panel.</p>
+            
             <input
               type="password"
               value={ownerKey}
               onChange={(e) => setOwnerKey(e.target.value)}
-              placeholder="Clave de dueño"
-              className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 mb-3 outline-none focus:border-yellow-500"
+              placeholder="🔑 Clave del dueño"
+              className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 mb-3 outline-none focus:border-yellow-500 text-center"
             />
-            <button
-              onClick={activateOwner}
-              className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-white py-3 rounded-xl font-bold"
-            >
-              👑 Activar Dueño
+            <button onClick={activateOwner}
+              className="w-full bg-gradient-to-r from-yellow-400 to-orange-500 text-white py-3 rounded-xl font-bold mb-6">
+              👑 Acceder como Dueño
             </button>
-          </div>
 
-          {/* Admin Key */}
-          <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100">
-            <div className="text-center mb-4">
-              <div className="text-5xl mb-2">⭐</div>
-              <h2 className="text-xl font-bold text-gray-800">Activar como ADMIN</h2>
+            <div className="border-t pt-4">
+              <p className="text-gray-400 text-xs mb-3">¿Eres staff autorizado?</p>
+              <input
+                type="password"
+                value={adminKey}
+                onChange={(e) => setAdminKey(e.target.value)}
+                placeholder="Clave de admin"
+                className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 mb-3 outline-none focus:border-pink-500 text-center text-sm"
+              />
+              <button onClick={activateAdmin}
+                className="w-full bg-gray-800 text-white py-2 rounded-xl font-bold text-sm">
+                ⭐ Acceder como Admin
+              </button>
             </div>
-            <input
-              type="password"
-              value={adminKey}
-              onChange={(e) => setAdminKey(e.target.value)}
-              placeholder="Clave de admin"
-              className="w-full border-2 border-gray-200 rounded-xl px-4 py-3 mb-3 outline-none focus:border-pink-500"
-            />
-            <button
-              onClick={activateAdmin}
-              className="w-full bg-gradient-to-r from-pink-500 to-red-500 text-white py-3 rounded-xl font-bold"
-            >
-              ⭐ Activar Admin
-            </button>
           </div>
         </div>
       </div>
