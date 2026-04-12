@@ -579,15 +579,28 @@ async def cp_level_up(cp_id: str):
         raise HTTPException(status_code=404, detail="Pareja no encontrada")
     new_level = cp.get('level', 1) + 1
     bonus = 0
+    ring = None
     if new_level == 6:
         bonus = 5000000
+        ring = "V1"
     elif new_level == 7:
         bonus = 5000000
-    await db.parejas.update_one({"id": cp_id}, {"$set": {"level": new_level}})
+        ring = "V2"
+    
+    updates = {"level": new_level}
+    if ring:
+        updates["ring"] = ring
+    
+    await db.parejas.update_one({"id": cp_id}, {"$set": updates})
     if bonus > 0:
         await db.users.update_one({"id": cp['user1_id']}, {"$inc": {"coins": bonus}})
         await db.users.update_one({"id": cp['user2_id']}, {"$inc": {"coins": bonus}})
-    return {"success": True, "new_level": new_level, "bonus": bonus}
+        # Add ring badge
+        if ring:
+            await db.users.update_one({"id": cp['user1_id']}, {"$push": {"badges": f"💍 Anillo {ring}"}})
+            await db.users.update_one({"id": cp['user2_id']}, {"$push": {"badges": f"💍 Anillo {ring}"}})
+    
+    return {"success": True, "new_level": new_level, "bonus": bonus, "ring": ring}
 
 # ==================== EVENTOS Y PREMIOS ====================
 
@@ -598,19 +611,57 @@ async def distribute_weekly_rewards(admin_id: str):
         raise HTTPException(status_code=403, detail="Solo el dueño puede distribuir premios")
     top_users = await db.users.find().sort("coins", -1).limit(3).to_list(3)
     rewards = [45000000, 35000000, 25000000]
+    aristocracies = [8, 7, 6]
     results = []
     for i, u in enumerate(top_users):
         if i < len(rewards):
+            new_badges = list(u.get('badges', []))
+            new_badges.append(f"🏆 Top {i+1} Semanal")
+            if i == 0:
+                new_badges.append("🏆 Campeón Semanal")
+                new_badges.append("💍 Anillo de Campeón")
+                new_badges.append("🎖️ Placa de Oro")
+            
             await db.users.update_one({"id": u['id']}, {
                 "$inc": {"coins": rewards[i]},
-                "$push": {"badges": f"🏆 Top {i+1} Semanal"}
+                "$set": {
+                    "badges": new_badges,
+                    "aristocracy": max(u.get('aristocracy', 0), aristocracies[i])
+                }
             })
-            results.append({"username": u['username'], "place": i+1, "reward": rewards[i]})
+            results.append({
+                "username": u['username'], "place": i+1, "reward": rewards[i],
+                "aristocracy": aristocracies[i],
+                "flash_fame": i == 0
+            })
+    
+    # Save flash fame (Top 1)
+    if top_users:
+        await db.system.update_one(
+            {"key": "flash_fame"},
+            {"$set": {
+                "key": "flash_fame",
+                "user_id": top_users[0]['id'],
+                "username": top_users[0]['username'],
+                "avatar": top_users[0]['avatar'],
+                "coins": top_users[0]['coins'],
+                "created_at": datetime.now(timezone.utc).isoformat()
+            }},
+            upsert=True
+        )
+    
     await db.events.insert_one({
         "id": str(uuid.uuid4()), "type": "weekly", "results": results,
         "created_at": datetime.now(timezone.utc).isoformat()
     })
     return {"success": True, "results": results}
+
+@api_router.get("/flash-fame")
+async def get_flash_fame():
+    fame = await db.system.find_one({"key": "flash_fame"})
+    if fame:
+        fame.pop('_id', None)
+    return fame or {}
 
 @api_router.post("/events/baby-robot")
 async def baby_robot_prize(admin_id: str):
@@ -645,14 +696,26 @@ async def clan_rewards(admin_id: str):
     if not admin or admin.get('role') != 'dueño':
         raise HTTPException(status_code=403, detail="Solo el dueño")
     top_clans = await db.clanes.find().sort("weekly_coins", -1).limit(3).to_list(3)
-    rewards = [30000000, 20000000, 10000000]
+    rewards = [25000000, 20000000, 15000000]
+    aristocracies = [6, 5, 4]
     results = []
     for i, clan in enumerate(top_clans):
         if i < len(rewards):
             per_member = rewards[i] // max(len(clan.get('members', [])), 1)
             for mid in clan.get('members', []):
                 await db.users.update_one({"id": mid}, {"$inc": {"coins": per_member}})
-            results.append({"clan": clan['name'], "place": i+1, "total_reward": rewards[i]})
+            # Give owner aristocracy
+            await db.users.update_one(
+                {"id": clan['owner_id']},
+                {"$set": {"aristocracy": max(aristocracies[i], 0)},
+                 "$inc": {"coins": rewards[i]}}
+            )
+            results.append({"clan": clan['name'], "place": i+1, "total_reward": rewards[i], "aristocracy": aristocracies[i]})
+    
+    await db.events.insert_one({
+        "id": str(uuid.uuid4()), "type": "clan_weekly", "results": results,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
     return {"success": True, "results": results}
 
 @api_router.get("/events/history")

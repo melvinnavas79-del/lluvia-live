@@ -1,0 +1,410 @@
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { useUser } from '../contexts/UserContext';
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+const ControlPanel = ({ onBack }) => {
+  const { user } = useUser();
+  const [users, setUsers] = useState([]);
+  const [rooms, setRooms] = useState([]);
+  const [clanes, setClanes] = useState([]);
+  const [events, setEvents] = useState([]);
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Event Creator
+  const [eventName, setEventName] = useState('');
+  const [eventPrize1, setEventPrize1] = useState(45000000);
+  const [eventPrize2, setEventPrize2] = useState(35000000);
+  const [eventPrize3, setEventPrize3] = useState(25000000);
+
+  // Config
+  const [config, setConfig] = useState({
+    gift_rosa_price: 100,
+    gift_corazon_price: 500,
+    gift_diamante_price: 5000,
+    gift_corona_price: 10000,
+    gift_dragon_price: 50000,
+    slot_min_bet: 100,
+    slot_max_bet: 1000000,
+    king_level_bonus: 3000000,
+    cp_level6_bonus: 5000000,
+    cp_level7_bonus: 5000000,
+    baby_robot_goal: 25000000,
+    baby_robot_prize: 15000000,
+  });
+
+  useEffect(() => { loadAll(); }, []);
+
+  const loadAll = async () => {
+    try {
+      const [u, r, c, e] = await Promise.all([
+        axios.get(`${API}/admin/users?admin_id=${user.id}`),
+        axios.get(`${API}/rooms`),
+        axios.get(`${API}/clanes`),
+        axios.get(`${API}/events/history`),
+      ]);
+      setUsers(u.data);
+      setRooms(r.data);
+      setClanes(c.data);
+      setEvents(e.data);
+    } catch (err) { console.error(err); }
+  };
+
+  const updateUserField = async (userId, field, value) => {
+    try {
+      await axios.put(`${API}/admin/users/${userId}?admin_id=${user.id}`, { [field]: value });
+      loadAll();
+    } catch (err) { alert(err.response?.data?.detail || 'Error'); }
+  };
+
+  const setRole = async (userId, role) => {
+    try {
+      await axios.post(`${API}/admin/set-role?user_id=${userId}&admin_id=${user.id}&role=${role}`);
+      loadAll();
+    } catch (err) { alert(err.response?.data?.detail || 'Error'); }
+  };
+
+  const banUser = async (userId) => {
+    if (!window.confirm('¿Banear este usuario?')) return;
+    try {
+      await axios.put(`${API}/admin/users/${userId}?admin_id=${user.id}`, { banned: true, vip_status: 'BANNED' });
+      loadAll();
+    } catch (err) { alert('Error'); }
+  };
+
+  const deleteUser = async (userId) => {
+    if (!window.confirm('¿ELIMINAR este usuario permanentemente?')) return;
+    try {
+      await axios.delete(`${API}/admin/users/${userId}?admin_id=${user.id}`);
+      loadAll();
+    } catch (err) { alert(err.response?.data?.detail || 'Error'); }
+  };
+
+  const distributeWeekly = async () => {
+    if (!window.confirm(`¿Repartir premios semanales?\n1° = ${(eventPrize1).toLocaleString()}\n2° = ${(eventPrize2).toLocaleString()}\n3° = ${(eventPrize3).toLocaleString()}`)) return;
+    try {
+      const res = await axios.post(`${API}/events/weekly-rewards?admin_id=${user.id}`);
+      alert(`Premios repartidos:\n${res.data.results.map(r => `${r.place}° ${r.username}: +${r.reward.toLocaleString()}`).join('\n')}`);
+      loadAll();
+    } catch (err) { alert(err.response?.data?.detail || 'Error'); }
+  };
+
+  const distributeClanRewards = async () => {
+    if (!window.confirm('¿Repartir premios de clanes?')) return;
+    try {
+      const res = await axios.post(`${API}/events/clan-rewards?admin_id=${user.id}`);
+      alert(`Premios de clanes:\n${res.data.results.map(r => `${r.place}° ${r.clan}: +${r.total_reward.toLocaleString()}`).join('\n')}`);
+      loadAll();
+    } catch (err) { alert(err.response?.data?.detail || 'Error'); }
+  };
+
+  const triggerBabyRobot = async () => {
+    try {
+      const res = await axios.post(`${API}/events/baby-robot?admin_id=${user.id}`);
+      if (res.data.success) {
+        alert(`🤖 BEBÉ ROBOT ACTIVADO\nBono por usuario: ${res.data.bonus_per_user.toLocaleString()}\nUsuarios: ${res.data.users_rewarded}`);
+      } else {
+        alert(`Meta no alcanzada. Total: ${res.data.total_global.toLocaleString()} / ${res.data.needed.toLocaleString()}`);
+      }
+      loadAll();
+    } catch (err) { alert(err.response?.data?.detail || 'Error'); }
+  };
+
+  const filteredUsers = users.filter(u =>
+    u.username?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    u.id?.includes(searchQuery) ||
+    u.custom_id?.includes(searchQuery)
+  );
+
+  const roleCounts = {
+    dueño: users.filter(u => u.role === 'dueño').length,
+    admin: users.filter(u => u.role === 'admin').length,
+    moderador: users.filter(u => u.role === 'moderador').length,
+    supervisor: users.filter(u => u.role === 'supervisor').length,
+    usuario: users.filter(u => !u.role || u.role === 'usuario').length,
+  };
+
+  const totalCoins = users.reduce((a, u) => a + (u.coins || 0), 0);
+
+  const tabs = [
+    { id: 'dashboard', label: '📊 Panel', icon: '📊' },
+    { id: 'users', label: '👥 Usuarios', icon: '👥' },
+    { id: 'events', label: '🏆 Eventos', icon: '🏆' },
+    { id: 'clanes', label: '🏷️ Clanes', icon: '🏷️' },
+    { id: 'rooms', label: '🏠 Salas', icon: '🏠' },
+    { id: 'config', label: '⚙️ Config', icon: '⚙️' },
+  ];
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-white pb-24">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-yellow-600 via-amber-600 to-yellow-600 p-4">
+        <div className="flex items-center justify-between max-w-6xl mx-auto">
+          <button onClick={onBack} className="bg-black/30 text-white px-4 py-2 rounded-full text-sm">← Volver</button>
+          <h1 className="text-xl font-black">👑 CONTROL MAESTRO</h1>
+          <span className="text-sm font-bold bg-black/30 px-3 py-1 rounded-full">☔ Lluvia Live</span>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="bg-gray-900 border-b border-gray-800 overflow-x-auto">
+        <div className="flex max-w-6xl mx-auto">
+          {tabs.map(tab => (
+            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-all ${
+                activeTab === tab.id ? 'border-yellow-500 text-yellow-400' : 'border-transparent text-gray-500 hover:text-gray-300'
+              }`}>
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="max-w-6xl mx-auto p-4">
+
+        {/* DASHBOARD */}
+        {activeTab === 'dashboard' && (
+          <div>
+            {/* Flash de Fama - Top 1 */}
+            {users.length > 0 && (
+              <div className="bg-gradient-to-r from-yellow-600 via-amber-500 to-yellow-600 rounded-2xl p-6 mb-6 text-center">
+                <p className="text-yellow-200 text-sm font-bold mb-2">⭐ FLASH DE FAMA ⭐</p>
+                <img src={users[0]?.avatar} alt="" className="w-20 h-20 rounded-full mx-auto mb-2 border-4 border-yellow-300" />
+                <h2 className="text-2xl font-black text-white">{users[0]?.username}</h2>
+                <p className="text-yellow-200">👑 TOP 1 - {users[0]?.coins?.toLocaleString()} monedas</p>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+              <div className="bg-gray-900 rounded-xl p-4 text-center border border-gray-800">
+                <div className="text-3xl font-black text-yellow-400">{users.length}</div>
+                <div className="text-gray-500 text-xs">Usuarios</div>
+              </div>
+              <div className="bg-gray-900 rounded-xl p-4 text-center border border-gray-800">
+                <div className="text-3xl font-black text-blue-400">{rooms.length}</div>
+                <div className="text-gray-500 text-xs">Salas</div>
+              </div>
+              <div className="bg-gray-900 rounded-xl p-4 text-center border border-gray-800">
+                <div className="text-3xl font-black text-green-400">{clanes.length}</div>
+                <div className="text-gray-500 text-xs">Clanes</div>
+              </div>
+              <div className="bg-gray-900 rounded-xl p-4 text-center border border-gray-800">
+                <div className="text-3xl font-black text-pink-400">{totalCoins.toLocaleString()}</div>
+                <div className="text-gray-500 text-xs">Total Monedas</div>
+              </div>
+            </div>
+
+            {/* Roles */}
+            <div className="grid grid-cols-5 gap-2 mb-6">
+              {Object.entries(roleCounts).map(([role, count]) => (
+                <div key={role} className="bg-gray-900 rounded-lg p-3 text-center border border-gray-800">
+                  <div className="text-xl font-bold text-white">{count}</div>
+                  <div className="text-gray-500 text-xs capitalize">{role}s</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Quick Actions */}
+            <h3 className="text-lg font-bold text-yellow-400 mb-3">⚡ Acciones Rápidas</h3>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              <button onClick={distributeWeekly} className="bg-gradient-to-r from-yellow-600 to-amber-600 p-4 rounded-xl font-bold text-sm">
+                🏆 Premios Semanales
+              </button>
+              <button onClick={distributeClanRewards} className="bg-gradient-to-r from-blue-600 to-cyan-600 p-4 rounded-xl font-bold text-sm">
+                🏷️ Premios Clanes
+              </button>
+              <button onClick={triggerBabyRobot} className="bg-gradient-to-r from-green-600 to-emerald-600 p-4 rounded-xl font-bold text-sm">
+                🤖 Bebé Robot
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* USERS */}
+        {activeTab === 'users' && (
+          <div>
+            <div className="mb-4">
+              <input type="text" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                placeholder="🔍 Buscar por nombre o ID..."
+                className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white outline-none focus:border-yellow-500" />
+            </div>
+            <div className="space-y-2">
+              {filteredUsers.map(u => (
+                <div key={u.id} className="bg-gray-900 rounded-xl p-3 border border-gray-800">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <img src={u.avatar} alt="" className="w-10 h-10 rounded-full" />
+                      <div>
+                        <div className="font-bold text-sm">{u.username} {u.role === 'dueño' && '👑'}</div>
+                        <div className="text-gray-500 text-xs">Lv.{u.level} | 💰{u.coins?.toLocaleString()} | {u.role || 'usuario'}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {u.role !== 'dueño' && (
+                        <>
+                          <select value={u.role || 'usuario'} onChange={e => setRole(u.id, e.target.value)}
+                            className="bg-gray-800 text-xs rounded-lg px-2 py-1 border border-gray-700">
+                            <option value="admin">⭐ Admin</option>
+                            <option value="moderador">🛡️ Mod</option>
+                            <option value="supervisor">👁️ Sup</option>
+                            <option value="usuario">👤 User</option>
+                          </select>
+                          <button onClick={() => updateUserField(u.id, 'coins', (u.coins || 0) + 10000000)}
+                            className="bg-green-900 text-green-400 px-2 py-1 rounded text-xs">+10M</button>
+                          <button onClick={() => updateUserField(u.id, 'level', Math.min((u.level || 1) + 10, 99))}
+                            className="bg-blue-900 text-blue-400 px-2 py-1 rounded text-xs">+10Lv</button>
+                          <button onClick={() => updateUserField(u.id, 'aristocracy', Math.min((u.aristocracy || 0) + 1, 9))}
+                            className="bg-purple-900 text-purple-400 px-2 py-1 rounded text-xs">+Arist</button>
+                          <button onClick={() => banUser(u.id)}
+                            className="bg-orange-900 text-orange-400 px-2 py-1 rounded text-xs">Ban</button>
+                          <button onClick={() => deleteUser(u.id)}
+                            className="bg-red-900 text-red-400 px-2 py-1 rounded text-xs">X</button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* EVENTS */}
+        {activeTab === 'events' && (
+          <div>
+            <h3 className="text-lg font-bold text-yellow-400 mb-4">🏆 Gestión de Eventos</h3>
+            
+            {/* Weekly */}
+            <div className="bg-gray-900 rounded-xl p-5 border border-gray-800 mb-4">
+              <h4 className="font-bold text-white mb-3">📅 Evento Semanal - Top 3</h4>
+              <div className="grid grid-cols-3 gap-3 mb-3">
+                <div>
+                  <label className="text-gray-500 text-xs">🥇 1er lugar</label>
+                  <input type="number" value={eventPrize1} onChange={e => setEventPrize1(Number(e.target.value))}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-yellow-400 font-bold" />
+                </div>
+                <div>
+                  <label className="text-gray-500 text-xs">🥈 2do lugar</label>
+                  <input type="number" value={eventPrize2} onChange={e => setEventPrize2(Number(e.target.value))}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-gray-300 font-bold" />
+                </div>
+                <div>
+                  <label className="text-gray-500 text-xs">🥉 3er lugar</label>
+                  <input type="number" value={eventPrize3} onChange={e => setEventPrize3(Number(e.target.value))}
+                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-orange-400 font-bold" />
+                </div>
+              </div>
+              <button onClick={distributeWeekly}
+                className="w-full bg-gradient-to-r from-yellow-600 to-amber-600 py-3 rounded-xl font-bold">
+                🏆 REPARTIR PREMIOS SEMANALES
+              </button>
+            </div>
+
+            {/* Clanes */}
+            <div className="bg-gray-900 rounded-xl p-5 border border-gray-800 mb-4">
+              <h4 className="font-bold text-white mb-3">🏷️ Premios Clanes</h4>
+              <p className="text-gray-400 text-sm mb-3">1° = 25M + Arist.6 | 2° = 20M + Arist.5 | 3° = 15M + Arist.4</p>
+              <button onClick={distributeClanRewards}
+                className="w-full bg-gradient-to-r from-blue-600 to-cyan-600 py-3 rounded-xl font-bold">
+                🏷️ REPARTIR PREMIOS CLANES
+              </button>
+            </div>
+
+            {/* Baby Robot */}
+            <div className="bg-gray-900 rounded-xl p-5 border border-gray-800 mb-4">
+              <h4 className="font-bold text-white mb-3">🤖 Bebé Robot</h4>
+              <p className="text-gray-400 text-sm mb-3">Meta global: 25M → Bono 15M repartido</p>
+              <button onClick={triggerBabyRobot}
+                className="w-full bg-gradient-to-r from-green-600 to-emerald-600 py-3 rounded-xl font-bold">
+                🤖 ACTIVAR BEBÉ ROBOT
+              </button>
+            </div>
+
+            {/* History */}
+            <h4 className="font-bold text-white mb-2">📜 Historial</h4>
+            <div className="space-y-2">
+              {events.map(e => (
+                <div key={e.id} className="bg-gray-900 rounded-lg p-3 border border-gray-800 text-sm">
+                  <span className="text-yellow-400 font-bold">{e.type}</span>
+                  <span className="text-gray-500 ml-2">{e.created_at?.split('T')[0]}</span>
+                </div>
+              ))}
+              {events.length === 0 && <p className="text-gray-600 text-center py-4">Sin eventos registrados</p>}
+            </div>
+          </div>
+        )}
+
+        {/* CLANES */}
+        {activeTab === 'clanes' && (
+          <div>
+            <h3 className="text-lg font-bold text-yellow-400 mb-4">🏷️ Clanes ({clanes.length})</h3>
+            <div className="space-y-2">
+              {clanes.map((c, i) => (
+                <div key={c.id} className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-yellow-400 font-bold mr-2">#{i + 1}</span>
+                      <span className="text-white font-bold">{c.name}</span>
+                      <span className="text-gray-500 text-sm ml-2">by {c.owner_name}</span>
+                    </div>
+                    <div className="text-sm text-gray-400">
+                      {c.members?.length || 0} miembros
+                    </div>
+                  </div>
+                </div>
+              ))}
+              {clanes.length === 0 && <p className="text-gray-600 text-center py-8">Sin clanes</p>}
+            </div>
+          </div>
+        )}
+
+        {/* ROOMS */}
+        {activeTab === 'rooms' && (
+          <div>
+            <h3 className="text-lg font-bold text-yellow-400 mb-4">🏠 Salas ({rooms.length})</h3>
+            <div className="space-y-2">
+              {rooms.map(r => (
+                <div key={r.id} className="bg-gray-900 rounded-xl p-4 border border-gray-800 flex items-center justify-between">
+                  <div>
+                    <div className="text-white font-bold">{r.name}</div>
+                    <div className="text-gray-500 text-xs">Dueño: {r.owner_name} | {r.active_users} online</div>
+                  </div>
+                  <button onClick={async () => {
+                    if (!window.confirm('¿Eliminar sala?')) return;
+                    await axios.delete(`${API}/admin/rooms/${r.id}?admin_id=${user.id}`);
+                    loadAll();
+                  }} className="bg-red-900 text-red-400 px-3 py-1 rounded-lg text-xs font-bold">Eliminar</button>
+                </div>
+              ))}
+              {rooms.length === 0 && <p className="text-gray-600 text-center py-8">Sin salas</p>}
+            </div>
+          </div>
+        )}
+
+        {/* CONFIG */}
+        {activeTab === 'config' && (
+          <div>
+            <h3 className="text-lg font-bold text-yellow-400 mb-4">⚙️ Configuración del Sistema</h3>
+            <div className="space-y-3">
+              {Object.entries(config).map(([key, value]) => (
+                <div key={key} className="bg-gray-900 rounded-xl p-4 border border-gray-800 flex items-center justify-between">
+                  <span className="text-gray-300 text-sm">{key.replace(/_/g, ' ').toUpperCase()}</span>
+                  <input type="number" value={value}
+                    onChange={e => setConfig(prev => ({ ...prev, [key]: Number(e.target.value) }))}
+                    className="bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-yellow-400 font-bold w-36 text-right" />
+                </div>
+              ))}
+              <button className="w-full bg-gradient-to-r from-yellow-600 to-amber-600 py-3 rounded-xl font-bold mt-4">
+                💾 Guardar Configuración
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default ControlPanel;

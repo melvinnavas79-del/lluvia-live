@@ -8,6 +8,7 @@ import ProfileView from './pages/ProfileView';
 import GamesView from './pages/GamesView';
 import SlotMachine from './pages/SlotMachine';
 import AdminPanel from './pages/AdminPanel';
+import ControlPanel from './pages/ControlPanel';
 import ReelsView from './pages/ReelsView';
 import PhotosView from './pages/PhotosView';
 
@@ -53,7 +54,7 @@ function AppContent() {
   }
 
   if (currentView === 'admin') {
-    return <AdminPanel onBack={() => setCurrentView('dashboard')} />;
+    return <ControlPanel onBack={() => setCurrentView('dashboard')} />;
   }
 
   if (currentView === 'reels') {
