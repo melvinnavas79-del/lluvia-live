@@ -6,12 +6,14 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
 const Dashboard = ({ onNavigate }) => {
   const { user } = useUser();
-  const [activeTab, setActiveTab] = useState('salas');
+  const [activeTab, setActiveTab] = useState('popular');
   const [rooms, setRooms] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [users, setUsers] = useState([]);
+  const [subTab, setSubTab] = useState('popular');
 
   useEffect(() => {
     loadRooms();
+    loadUsers();
   }, []);
 
   const loadRooms = async () => {
@@ -23,10 +25,18 @@ const Dashboard = ({ onNavigate }) => {
     }
   };
 
+  const loadUsers = async () => {
+    try {
+      const res = await axios.get(`${API}/rankings/coins`);
+      setUsers(res.data);
+    } catch (err) {
+      console.error('Error loading users:', err);
+    }
+  };
+
   const createRoom = async () => {
     const roomName = prompt('Nombre de la sala:');
     if (!roomName) return;
-
     try {
       await axios.post(`${API}/rooms?owner_id=${user.id}`, { name: roomName });
       loadRooms();
@@ -35,171 +45,299 @@ const Dashboard = ({ onNavigate }) => {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-purple-900 via-blue-900 to-purple-900">
-      {/* Header */}
-      <div className="bg-gradient-to-r from-blue-900/50 to-purple-900/50 border-b border-pink-500/30 p-4">
-        <div className="flex items-center justify-between max-w-6xl mx-auto">
-          <div className="flex items-center gap-3">
-            <div className="text-3xl">☂️💧</div>
-            <div>
-              <h1 className="text-2xl font-bold text-pink-400">Lluvia Live</h1>
-            </div>
-          </div>
+  const renderMio = () => (
+    <div className="p-4">
+      <div className="grid grid-cols-4 gap-3 mb-6">
+        {[
+          { icon: '🏠', label: 'My Room', action: createRoom },
+          { icon: '💬', label: 'Quick Join', action: () => { if (rooms.length > 0) onNavigate('room', rooms[0].id); } },
+          { icon: '🎬', label: 'Reels', action: () => onNavigate('reels') },
+          { icon: '📸', label: 'Galería', action: () => onNavigate('photos') }
+        ].map((item, i) => (
+          <button
+            key={i}
+            onClick={item.action}
+            className="bg-white/10 backdrop-blur border border-white/20 rounded-2xl p-4 hover:bg-white/20 transition-all flex flex-col items-center"
+          >
+            <div className="text-3xl mb-1">{item.icon}</div>
+            <div className="text-white text-xs font-medium">{item.label}</div>
+          </button>
+        ))}
+      </div>
 
-          <div className="flex items-center gap-4">
-            <div className="bg-yellow-600/30 border-2 border-yellow-500 rounded-full px-4 py-2">
-              <span className="text-yellow-300 font-bold">💰 {user.coins}</span>
+      <h3 className="text-lg font-bold text-gray-800 mb-3">🔑 Salas Activas</h3>
+      <div className="space-y-3">
+        {rooms.map(room => (
+          <button
+            key={room.id}
+            onClick={() => onNavigate('room', room.id)}
+            className="w-full bg-white rounded-2xl p-4 shadow-sm hover:shadow-md transition-all text-left border border-gray-100"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-xl flex items-center justify-center text-white text-xl">☔</div>
+                <div>
+                  <h4 className="font-bold text-gray-800">{room.name}</h4>
+                  <p className="text-gray-500 text-sm">Bienvenidos a Lluvia Live</p>
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-blue-500 font-bold">{room.active_users} 👥</div>
+              </div>
             </div>
-            <button
-              onClick={() => onNavigate('profile')}
-              className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-full transition-colors"
-            >
-              <img
-                src={user.avatar}
-                alt={user.username}
-                className="w-8 h-8 rounded-full"
-              />
-              <span className="text-white font-medium">{user.username}</span>
-            </button>
+          </button>
+        ))}
+        {rooms.length === 0 && (
+          <div className="text-center py-8 text-gray-400">
+            <div className="text-5xl mb-3">🪑</div>
+            <p>No hay salas. ¡Crea una!</p>
           </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderPopular = () => (
+    <div className="p-4">
+      {/* Weekly Family Star Banner */}
+      <div className="bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 rounded-3xl p-8 mb-6 text-center">
+        <div className="text-6xl mb-3">🦁</div>
+        <h2 className="text-3xl font-bold text-yellow-400" style={{textShadow: '0 0 20px rgba(234,179,8,0.5)'}}>
+          Weekly Family Star
+        </h2>
+      </div>
+
+      {/* Ranking Cards */}
+      <div className="grid grid-cols-3 gap-3 mb-6">
+        {/* Lista TOP 3 */}
+        <div className="bg-gradient-to-b from-cyan-100 to-cyan-50 rounded-2xl p-4 text-center">
+          <h4 className="font-bold text-gray-800 mb-2">lista</h4>
+          <div className="flex justify-center -space-x-2 mb-2">
+            <div className="w-10 h-10 rounded-full bg-blue-300 border-2 border-yellow-400 flex items-center justify-center text-sm">👩</div>
+            <div className="w-10 h-10 rounded-full bg-pink-300 border-2 border-yellow-400 flex items-center justify-center text-sm">👸</div>
+            <div className="w-10 h-10 rounded-full bg-purple-300 border-2 border-yellow-400 flex items-center justify-center text-sm">👩</div>
+          </div>
+          <div className="text-sm font-bold text-gray-800">🔥 TOP 3 🔥</div>
+        </div>
+
+        {/* Pareja */}
+        <div className="bg-gradient-to-b from-pink-100 to-pink-50 rounded-2xl p-4 text-center">
+          <h4 className="font-bold text-gray-800 mb-2">Pareja</h4>
+          <div className="flex justify-center items-center gap-1 mb-2">
+            <div className="w-10 h-10 rounded-full bg-blue-300 border-2 border-yellow-400 flex items-center justify-center text-sm">👤</div>
+            <div className="text-xl">💖</div>
+            <div className="w-10 h-10 rounded-full bg-pink-300 border-2 border-yellow-400 flex items-center justify-center text-sm">👩</div>
+          </div>
+          <div className="text-sm font-bold text-pink-600">🔥 PAREJA 🔥</div>
+        </div>
+
+        {/* Clan */}
+        <div className="bg-gradient-to-b from-blue-100 to-blue-50 rounded-2xl p-4 text-center">
+          <h4 className="font-bold text-gray-800 mb-2">Clan</h4>
+          <div className="flex justify-center -space-x-2 mb-2">
+            <div className="w-10 h-10 rounded-full bg-yellow-300 border-2 border-yellow-400 flex items-center justify-center text-sm">🦁</div>
+            <div className="w-10 h-10 rounded-full bg-blue-300 border-2 border-yellow-400 flex items-center justify-center text-sm">👤</div>
+            <div className="w-10 h-10 rounded-full bg-pink-300 border-2 border-yellow-400 flex items-center justify-center text-sm">👩</div>
+          </div>
+          <div className="text-sm font-bold text-gray-800">🔥 TOP 2 🔥</div>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="bg-gradient-to-r from-purple-900/30 to-pink-900/30 border-b border-pink-500/20">
-        <div className="max-w-6xl mx-auto flex gap-2 p-2">
+      {/* Popular / Nuevo Sub-tabs */}
+      <div className="flex gap-6 mb-4 border-b border-gray-200">
+        <button
+          onClick={() => setSubTab('popular')}
+          className={`pb-2 font-bold transition-all ${subTab === 'popular' ? 'text-gray-800 border-b-2 border-cyan-400' : 'text-gray-400'}`}
+        >
+          Popular
+        </button>
+        <button
+          onClick={() => setSubTab('nuevo')}
+          className={`pb-2 font-bold transition-all ${subTab === 'nuevo' ? 'text-gray-800 border-b-2 border-cyan-400' : 'text-gray-400'}`}
+        >
+          Nuevo
+        </button>
+      </div>
+
+      {/* User Feed */}
+      <div className="space-y-3">
+        {users.map((u, i) => (
+          <div key={u.id || i} className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
+            <div className="flex items-center gap-3">
+              <img
+                src={u.avatar}
+                alt={u.username}
+                className="w-14 h-14 rounded-full border-2 border-blue-200"
+              />
+              <div className="flex-1">
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-blue-500">🦋</span>
+                  <span className="font-bold text-gray-800">{u.username}</span>
+                  <span className="text-blue-500">🦋</span>
+                  <span className="bg-orange-400 text-white text-xs px-2 py-0.5 rounded-full font-bold">FRIENDS</span>
+                </div>
+                <div className="flex gap-1 mb-1">
+                  <span>🇨🇴</span>
+                  <span>🏆</span>
+                  <span>👑</span>
+                </div>
+                <p className="text-gray-500 text-sm truncate">Nunca hagas cosas que después ...</p>
+              </div>
+              <div className="text-right">
+                <div className="text-blue-500 font-bold flex items-center gap-1">
+                  <span className="text-lg">📊</span> {u.coins?.toLocaleString() || 0}
+                </div>
+              </div>
+            </div>
+          </div>
+        ))}
+        {users.length === 0 && (
+          <div className="text-center py-8 text-gray-400">
+            <div className="text-5xl mb-3">👥</div>
+            <p>No hay usuarios todavía</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  const renderDescubrir = () => (
+    <div className="p-4">
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <button
+          onClick={() => onNavigate('reels')}
+          className="bg-gradient-to-br from-pink-500 to-rose-600 rounded-2xl p-6 text-center hover:scale-105 transition-all"
+        >
+          <div className="text-5xl mb-2">🎬</div>
+          <h3 className="text-white font-bold text-lg">Reels</h3>
+          <p className="text-white/80 text-sm">Videos cortos</p>
+        </button>
+        <button
+          onClick={() => onNavigate('photos')}
+          className="bg-gradient-to-br from-purple-500 to-indigo-600 rounded-2xl p-6 text-center hover:scale-105 transition-all"
+        >
+          <div className="text-5xl mb-2">📸</div>
+          <h3 className="text-white font-bold text-lg">Fotos</h3>
+          <p className="text-white/80 text-sm">Galería</p>
+        </button>
+      </div>
+      <h3 className="text-lg font-bold text-gray-800 mb-3">✨ Tendencias</h3>
+      <div className="text-center py-8 text-gray-400">
+        <div className="text-5xl mb-3">🔍</div>
+        <p>Descubre contenido nuevo</p>
+      </div>
+    </div>
+  );
+
+  const renderEvent = () => (
+    <div className="p-4 text-center py-12">
+      <div className="text-6xl mb-4">🎉</div>
+      <h3 className="text-xl font-bold text-gray-800 mb-2">Eventos</h3>
+      <p className="text-gray-500">Próximamente eventos especiales</p>
+    </div>
+  );
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
+      {/* Status Bar */}
+      <div className="bg-blue-50 px-4 py-2 flex items-center justify-between">
+        <span className="text-gray-600 text-sm font-medium">08:03</span>
+        <div className="flex items-center gap-3">
+          <span className="text-gray-600 text-sm">📶</span>
+          <span className="text-gray-600 text-sm">📡</span>
+          <span className="text-green-500 font-bold text-sm">🔋 1K</span>
+        </div>
+      </div>
+
+      {/* Top Tabs: Mío, Popular, Descubrir, Event */}
+      <div className="bg-white/80 backdrop-blur px-4 pt-2">
+        <div className="flex items-center gap-1">
           {[
-            { id: 'salas', label: '🏠 Salas', emoji: '🏠' },
-            { id: 'juegos', label: '🎮 Juegos', emoji: '🎮' },
-            { id: 'rankings', label: '🏆 Rankings', emoji: '🏆' },
-            { id: 'clanes', label: '🏷️ Clanes', emoji: '🏷️' }
+            { id: 'mio', label: 'Mío' },
+            { id: 'popular', label: 'Popular' },
+            { id: 'descubrir', label: 'Descubrir' },
+            { id: 'event', label: 'Event' }
           ].map(tab => (
             <button
               key={tab.id}
-              onClick={() => tab.id === 'juegos' ? onNavigate('games') : setActiveTab(tab.id)}
-              className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all ${
-                activeTab === tab.id
-                  ? 'bg-pink-500 text-white'
-                  : 'bg-purple-800/30 text-gray-300 hover:bg-purple-700/40'
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex-1 py-3 text-center font-medium transition-all relative ${
+                activeTab === tab.id ? 'text-gray-800' : 'text-gray-400'
               }`}
             >
               {tab.label}
+              {activeTab === tab.id && (
+                <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-8 h-1 bg-cyan-400 rounded-full"></div>
+              )}
             </button>
           ))}
+          <button className="p-2 text-gray-500 text-xl">🔍</button>
         </div>
       </div>
 
       {/* Content */}
-      <div className="max-w-6xl mx-auto p-6">
-        {activeTab === 'salas' && (
-          <div>
-            {/* Search Bar */}
-            <div className="bg-purple-800/30 border-2 border-purple-500/30 rounded-full px-6 py-3 mb-6 flex items-center gap-3">
-              <span className="text-2xl">🔍</span>
-              <input
-                type="text"
-                placeholder="Buscar Personas..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="flex-1 bg-transparent text-white placeholder-gray-400 outline-none"
-              />
-              <button className="bg-yellow-500 w-10 h-10 rounded-full flex items-center justify-center text-xl">
-                🏆
-              </button>
-              <img src={user.avatar} alt="" className="w-10 h-10 rounded-full border-2 border-pink-500" />
+      <div className="pb-24">
+        {activeTab === 'mio' && renderMio()}
+        {activeTab === 'popular' && renderPopular()}
+        {activeTab === 'descubrir' && renderDescubrir()}
+        {activeTab === 'event' && renderEvent()}
+      </div>
+
+      {/* Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-2 py-2 z-50">
+        <div className="flex items-center justify-around max-w-lg mx-auto">
+          <button
+            onClick={() => setActiveTab('mio')}
+            className="flex flex-col items-center gap-1"
+          >
+            <div className="w-12 h-12 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full flex items-center justify-center">
+              <span className="text-white text-xl">🎤</span>
             </div>
+            <span className="text-xs text-cyan-500 font-medium">por la sala</span>
+          </button>
 
-            {/* Quick Actions */}
-            <div className="grid grid-cols-4 gap-4 mb-6">
-              {[
-                { icon: '🏠', label: 'My Room', action: createRoom },
-                { icon: '💬', label: 'Quick Join', action: () => { if (rooms.length > 0) onNavigate('room', rooms[0].id); else alert('No hay salas activas'); } },
-                { icon: '🎬', label: 'Reels', action: () => onNavigate('reels') },
-                { icon: '📸', label: 'Galería', action: () => onNavigate('photos') }
-              ].map((item, i) => (
-                <button
-                  key={i}
-                  onClick={item.action}
-                  className="bg-gradient-to-br from-purple-700/40 to-purple-900/40 border-2 border-purple-500/30 rounded-2xl p-6 hover:from-purple-600/50 hover:to-purple-800/50 transition-all"
-                >
-                  <div className="text-4xl mb-2">{item.icon}</div>
-                  <div className="text-white font-medium">{item.label}</div>
-                </button>
-              ))}
+          <button
+            onClick={() => onNavigate('games')}
+            className="flex flex-col items-center gap-1"
+          >
+            <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
+              <span className="text-2xl">🎮</span>
             </div>
+            <span className="text-xs text-gray-500">Juegos</span>
+          </button>
 
-            {/* Banner */}
-            <div className="bg-gradient-to-r from-purple-600 to-pink-600 rounded-3xl p-8 mb-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <div className="text-4xl mb-2">🎉</div>
-                  <h2 className="text-3xl font-bold text-white mb-2">Encuentra tu Vibra</h2>
-                  <p className="text-white/80">Unete a salas de streaming en vivo</p>
-                </div>
-                <div className="w-32 h-32 bg-purple-500/30 rounded-3xl"></div>
-              </div>
+          <button
+            onClick={() => onNavigate('reels')}
+            className="flex flex-col items-center gap-1"
+          >
+            <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
+              <span className="text-2xl">🎬</span>
             </div>
+            <span className="text-xs text-gray-500">Momento</span>
+          </button>
 
-            {/* Active Rooms */}
-            <div className="mb-6">
-              <h3 className="text-2xl font-bold text-yellow-400 mb-4 flex items-center gap-2">
-                <span>🔑</span> Salas Activas
-              </h3>
-              <div className="space-y-3">
-                {rooms.map(room => (
-                  <button
-                    key={room.id}
-                    onClick={() => onNavigate('room', room.id)}
-                    className="w-full bg-gradient-to-r from-purple-800/40 to-blue-800/40 border-2 border-purple-500/30 rounded-2xl p-6 hover:border-pink-500/50 transition-all text-left"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="w-16 h-16 bg-gradient-to-br from-cyan-400 to-blue-600 rounded-xl"></div>
-                        <div>
-                          <h4 className="text-xl font-bold text-white mb-1">{room.name} ✨</h4>
-                          <p className="text-gray-400">Bienvenidos a Lluvia Live</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-pink-400 font-bold">{room.active_users} 👥</div>
-                        <div className="text-gray-400 text-sm">en línea</div>
-                      </div>
-                    </div>
-                  </button>
-                ))}
-
-                {rooms.length === 0 && (
-                  <div className="text-center py-12 text-gray-400">
-                    <div className="text-6xl mb-4">🪑</div>
-                    <p>No hay salas activas. ¡Crea una!</p>
-                  </div>
-                )}
-              </div>
+          <button
+            onClick={() => onNavigate('photos')}
+            className="flex flex-col items-center gap-1 relative"
+          >
+            <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center">
+              <span className="text-2xl">📸</span>
             </div>
-          </div>
-        )}
+            <span className="text-xs text-gray-500">Fotos</span>
+          </button>
 
-        {activeTab === 'rankings' && (
-          <div className="text-center py-12 text-gray-400">
-            <div className="text-6xl mb-4">🏆</div>
-            <p>Rankings próximamente...</p>
-          </div>
-        )}
-
-        {activeTab === 'clanes' && (
-          <div className="text-center py-12 text-gray-400">
-            <div className="text-6xl mb-4">🏷️</div>
-            <p>Clanes próximamente...</p>
-          </div>
-        )}
-
-        {activeTab === 'juegos' && (
-          <div className="text-center py-12 text-gray-400">
-            <div className="text-6xl mb-4">🎮</div>
-            <p>Juegos próximamente...</p>
-          </div>
-        )}
+          <button
+            onClick={() => onNavigate('profile')}
+            className="flex flex-col items-center gap-1"
+          >
+            <img
+              src={user.avatar}
+              alt="yo"
+              className="w-12 h-12 rounded-full border-2 border-gray-200"
+            />
+            <span className="text-xs text-gray-500">yo</span>
+          </button>
+        </div>
       </div>
     </div>
   );
