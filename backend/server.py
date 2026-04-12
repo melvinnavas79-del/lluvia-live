@@ -80,6 +80,8 @@ async def register(user_data: UserRegister):
         "diamonds": 0,
         "aristocracy": 0,
         "vip_status": "NORMAL",
+        "is_admin": False,
+        "ghost_mode": False,
         "badges": ["🌟 Nuevo"],
         "avatar": f"https://api.dicebear.com/7.x/avataaars/svg?seed={user_id}",
         "created_at": datetime.now(timezone.utc).isoformat()
@@ -277,7 +279,221 @@ async def delete_room(room_id: str, owner_id: str):
     await db.rooms.delete_one({"id": room_id})
     return {"success": True}
 
-# ==================== RANKINGS ====================
+# ==================== ADMIN ====================
+
+@api_router.post("/admin/set-admin")
+async def set_admin(user_id: str, admin_key: str):
+    if admin_key != "lluvia_admin_2024":
+        raise HTTPException(status_code=403, detail="Clave inválida")
+    
+    result = await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"is_admin": True, "vip_status": "ADMIN", "badges": ["👑 Admin", "🌟 Fundador", "💎 VIP"]}}
+    )
+    
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    user = await db.users.find_one({"id": user_id})
+    return serialize_user(user)
+
+@api_router.get("/admin/users")
+async def admin_get_users(admin_id: str):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or not admin.get('is_admin', False):
+        raise HTTPException(status_code=403, detail="No tienes permisos de admin")
+    
+    users = await db.users.find().to_list(500)
+    return [serialize_user(u) for u in users]
+
+@api_router.put("/admin/users/{user_id}")
+async def admin_update_user(user_id: str, admin_id: str, updates: Dict[str, Any]):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or not admin.get('is_admin', False):
+        raise HTTPException(status_code=403, detail="No tienes permisos de admin")
+    
+    updates.pop('password', None)
+    updates.pop('_id', None)
+    updates.pop('id', None)
+    
+    await db.users.update_one({"id": user_id}, {"$set": updates})
+    user = await db.users.find_one({"id": user_id})
+    return serialize_user(user)
+
+@api_router.delete("/admin/users/{user_id}")
+async def admin_delete_user(user_id: str, admin_id: str):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or not admin.get('is_admin', False):
+        raise HTTPException(status_code=403, detail="No tienes permisos de admin")
+    
+    await db.users.delete_one({"id": user_id})
+    return {"success": True}
+
+@api_router.delete("/admin/rooms/{room_id}")
+async def admin_delete_room(room_id: str, admin_id: str):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or not admin.get('is_admin', False):
+        raise HTTPException(status_code=403, detail="No tienes permisos de admin")
+    
+    await db.rooms.delete_one({"id": room_id})
+    return {"success": True}
+
+# ==================== GHOST MODE ====================
+
+@api_router.post("/users/{user_id}/ghost-mode")
+async def toggle_ghost_mode(user_id: str):
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    if not user.get('is_admin', False):
+        raise HTTPException(status_code=403, detail="Solo el admin puede usar Modo Fantasma")
+    
+    new_mode = not user.get('ghost_mode', False)
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"ghost_mode": new_mode}}
+    )
+    
+    return {"success": True, "ghost_mode": new_mode}
+
+# ==================== REELS ====================
+
+class ReelCreate(BaseModel):
+    user_id: str
+    title: str
+    description: str = ""
+    video_url: str = ""
+
+@api_router.post("/reels")
+async def create_reel(reel: ReelCreate):
+    user = await db.users.find_one({"id": reel.user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    reel_id = str(uuid.uuid4())
+    reel_doc = {
+        "id": reel_id,
+        "user_id": reel.user_id,
+        "username": user['username'],
+        "avatar": user['avatar'],
+        "title": reel.title,
+        "description": reel.description,
+        "video_url": reel.video_url,
+        "likes": 0,
+        "liked_by": [],
+        "comments": [],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.reels.insert_one(reel_doc)
+    reel_doc.pop('_id', None)
+    return reel_doc
+
+@api_router.get("/reels")
+async def get_reels():
+    reels = await db.reels.find().sort("created_at", -1).to_list(100)
+    return [dict(r, **{"_id": None}) if "_id" in r else r for r in [{k: v for k, v in reel.items() if k != "_id"} for reel in reels]]
+
+@api_router.post("/reels/{reel_id}/like")
+async def like_reel(reel_id: str, user_id: str):
+    reel = await db.reels.find_one({"id": reel_id})
+    if not reel:
+        raise HTTPException(status_code=404, detail="Reel no encontrado")
+    
+    liked_by = reel.get('liked_by', [])
+    if user_id in liked_by:
+        liked_by.remove(user_id)
+        inc = -1
+    else:
+        liked_by.append(user_id)
+        inc = 1
+    
+    await db.reels.update_one(
+        {"id": reel_id},
+        {"$set": {"liked_by": liked_by}, "$inc": {"likes": inc}}
+    )
+    
+    return {"success": True, "likes": reel.get('likes', 0) + inc}
+
+@api_router.post("/reels/{reel_id}/comment")
+async def comment_reel(reel_id: str, user_id: str, text: str):
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    comment = {
+        "id": str(uuid.uuid4()),
+        "user_id": user_id,
+        "username": user['username'],
+        "text": text,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.reels.update_one(
+        {"id": reel_id},
+        {"$push": {"comments": comment}}
+    )
+    
+    return {"success": True, "comment": comment}
+
+# ==================== PHOTOS ====================
+
+class PhotoCreate(BaseModel):
+    user_id: str
+    title: str
+    image_url: str
+    description: str = ""
+
+@api_router.post("/photos")
+async def create_photo(photo: PhotoCreate):
+    user = await db.users.find_one({"id": photo.user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    photo_id = str(uuid.uuid4())
+    photo_doc = {
+        "id": photo_id,
+        "user_id": photo.user_id,
+        "username": user['username'],
+        "avatar": user['avatar'],
+        "title": photo.title,
+        "image_url": photo.image_url,
+        "description": photo.description,
+        "likes": 0,
+        "liked_by": [],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    
+    await db.photos.insert_one(photo_doc)
+    photo_doc.pop('_id', None)
+    return photo_doc
+
+@api_router.get("/photos")
+async def get_photos():
+    photos = await db.photos.find().sort("created_at", -1).to_list(100)
+    return [{k: v for k, v in p.items() if k != "_id"} for p in photos]
+
+@api_router.post("/photos/{photo_id}/like")
+async def like_photo(photo_id: str, user_id: str):
+    photo = await db.photos.find_one({"id": photo_id})
+    if not photo:
+        raise HTTPException(status_code=404, detail="Foto no encontrada")
+    
+    liked_by = photo.get('liked_by', [])
+    if user_id in liked_by:
+        liked_by.remove(user_id)
+        inc = -1
+    else:
+        liked_by.append(user_id)
+        inc = 1
+    
+    await db.photos.update_one(
+        {"id": photo_id},
+        {"$set": {"liked_by": liked_by}, "$inc": {"likes": inc}}
+    )
+    
+    return {"success": True, "likes": photo.get('likes', 0) + inc}
 
 @api_router.get("/rankings/coins")
 async def get_coins_ranking():

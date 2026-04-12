@@ -6,6 +6,9 @@ import Dashboard from './pages/Dashboard';
 import RoomView from './pages/RoomView';
 import ProfileView from './pages/ProfileView';
 import GamesView from './pages/GamesView';
+import AdminPanel from './pages/AdminPanel';
+import ReelsView from './pages/ReelsView';
+import PhotosView from './pages/PhotosView';
 
 function AppContent() {
   const { isAuthenticated, login } = useUser();
@@ -33,33 +36,30 @@ function AppContent() {
   }
 
   if (currentView === 'room' && selectedRoomId) {
-    return (
-      <RoomView
-        roomId={selectedRoomId}
-        onBack={() => setCurrentView('dashboard')}
-      />
-    );
+    return <RoomView roomId={selectedRoomId} onBack={() => setCurrentView('dashboard')} />;
   }
 
   if (currentView === 'profile') {
-    return (
-      <ProfileView
-        onBack={() => setCurrentView('dashboard')}
-      />
-    );
+    return <ProfileView onBack={() => setCurrentView('dashboard')} onNavigate={handleNavigate} />;
   }
 
   if (currentView === 'games') {
-    return (
-      <GamesView
-        onBack={() => setCurrentView('dashboard')}
-      />
-    );
+    return <GamesView onBack={() => setCurrentView('dashboard')} />;
   }
 
-  return (
-    <Dashboard onNavigate={handleNavigate} />
-  );
+  if (currentView === 'admin') {
+    return <AdminPanel onBack={() => setCurrentView('dashboard')} />;
+  }
+
+  if (currentView === 'reels') {
+    return <ReelsView onBack={() => setCurrentView('dashboard')} />;
+  }
+
+  if (currentView === 'photos') {
+    return <PhotosView onBack={() => setCurrentView('dashboard')} />;
+  }
+
+  return <Dashboard onNavigate={handleNavigate} />;
 }
 
 function App() {

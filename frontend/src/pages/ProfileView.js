@@ -1,8 +1,12 @@
-import React from 'react';
+import React, { useState } from 'react';
+import axios from 'axios';
 import { useUser } from '../contexts/UserContext';
 
-const ProfileView = ({ onBack }) => {
-  const { user, logout } = useUser();
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
+const ProfileView = ({ onBack, onNavigate }) => {
+  const { user, logout, updateUser } = useUser();
+  const [ghostMode, setGhostMode] = useState(user?.ghost_mode || false);
 
   const getLevelInfo = (level) => {
     const levels = {
@@ -17,6 +21,18 @@ const ProfileView = ({ onBack }) => {
       9: { name: 'SUPREMO', emoji: '👑💎👑💎' }
     };
     return levels[level] || levels[1];
+  };
+
+  const toggleGhostMode = async () => {
+    try {
+      const res = await axios.post(`${API}/users/${user.id}/ghost-mode`);
+      if (res.data.success) {
+        setGhostMode(res.data.ghost_mode);
+        updateUser({ ghost_mode: res.data.ghost_mode });
+      }
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Solo el admin puede usar Modo Fantasma');
+    }
   };
 
   const levelInfo = getLevelInfo(user.level);
@@ -42,14 +58,16 @@ const ProfileView = ({ onBack }) => {
             />
           </div>
 
-          <h2 className="text-3xl font-bold text-white text-center mb-2">{user.username}</h2>
+          <h2 className="text-3xl font-bold text-white text-center mb-2">
+            {user.username} {user.is_admin && '👑'}
+          </h2>
           <p className="text-yellow-400 text-center text-xl mb-6">{user.vip_status}</p>
 
           <div className="bg-black/30 rounded-2xl p-6 mb-6">
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <div className="text-gray-400 text-sm mb-1">💰 Monedas</div>
-                <div className="text-pink-400 text-2xl font-bold">{user.coins}</div>
+                <div className="text-pink-400 text-2xl font-bold">{user.coins?.toLocaleString()}</div>
               </div>
               <div>
                 <div className="text-gray-400 text-sm mb-1">Nivel</div>
@@ -69,7 +87,7 @@ const ProfileView = ({ onBack }) => {
           <div className="mb-6">
             <h3 className="text-white font-bold mb-3">🎯 Badges:</h3>
             <div className="flex flex-wrap gap-2">
-              {user.badges.map((badge, i) => (
+              {user.badges?.map((badge, i) => (
                 <span
                   key={i}
                   className="bg-purple-600/50 px-3 py-1 rounded-full text-white text-sm"
@@ -94,15 +112,30 @@ const ProfileView = ({ onBack }) => {
         </div>
 
         <div className="space-y-3 mb-6">
-          <button className="w-full bg-purple-800/40 hover:bg-purple-700/50 border-2 border-purple-500/30 text-white py-4 rounded-2xl font-medium transition-all flex items-center justify-between px-6">
+          <button
+            onClick={toggleGhostMode}
+            className="w-full bg-purple-800/40 hover:bg-purple-700/50 border-2 border-purple-500/30 text-white py-4 rounded-2xl font-medium transition-all flex items-center justify-between px-6"
+          >
             <span>👻 Modo Fantasma</span>
-            <span className="text-gray-400">APAGADO</span>
+            <span className={ghostMode ? 'text-green-400 font-bold' : 'text-gray-400'}>
+              {ghostMode ? 'ENCENDIDO' : 'APAGADO'}
+            </span>
           </button>
 
           <button className="w-full bg-purple-800/40 hover:bg-purple-700/50 border-2 border-purple-500/30 text-white py-4 rounded-2xl font-medium transition-all flex items-center justify-between px-6">
             <span>💰 Billetera</span>
             <span>→</span>
           </button>
+
+          {user.is_admin && (
+            <button
+              onClick={() => onNavigate('admin')}
+              className="w-full bg-gradient-to-r from-yellow-500/30 to-orange-500/30 border-2 border-yellow-500/50 text-white py-4 rounded-2xl font-medium transition-all flex items-center justify-between px-6"
+            >
+              <span>👑 Panel de Administración</span>
+              <span>→</span>
+            </button>
+          )}
         </div>
 
         <button

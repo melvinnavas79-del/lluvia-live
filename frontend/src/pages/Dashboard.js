@@ -114,9 +114,9 @@ const Dashboard = ({ onNavigate }) => {
             <div className="grid grid-cols-4 gap-4 mb-6">
               {[
                 { icon: '🏠', label: 'My Room', action: createRoom },
-                { icon: '💬', label: 'Quick Join', action: () => {} },
-                { icon: '🎬', label: 'Reels', action: () => {} },
-                { icon: '📸', label: 'Galería', action: () => {} }
+                { icon: '💬', label: 'Quick Join', action: () => { if (rooms.length > 0) onNavigate('room', rooms[0].id); else alert('No hay salas activas'); } },
+                { icon: '🎬', label: 'Reels', action: () => onNavigate('reels') },
+                { icon: '📸', label: 'Galería', action: () => onNavigate('photos') }
               ].map((item, i) => (
                 <button
                   key={i}

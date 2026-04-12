@@ -388,6 +388,214 @@ class LluviaLiveAPITester:
         
         return success  # Should return 400 for insufficient coins
 
+    def test_admin_set_admin(self):
+        """Test setting admin with correct key"""
+        if not self.test_user_id:
+            print("❌ No test user ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Admin: Set Admin",
+            "POST",
+            "admin/set-admin",
+            200,
+            params={"user_id": self.test_user_id, "admin_key": "lluvia_admin_2024"}
+        )
+        
+        if success and response.get('is_admin'):
+            print(f"✅ User is now admin with VIP status: {response.get('vip_status')}")
+            return True
+        return False
+
+    def test_admin_set_admin_invalid_key(self):
+        """Test setting admin with invalid key"""
+        if not self.test_user_id:
+            print("❌ No test user ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Admin: Invalid Key",
+            "POST",
+            "admin/set-admin",
+            403,
+            params={"user_id": self.test_user_id, "admin_key": "wrong_key"}
+        )
+        
+        return success  # Should return 403 for invalid key
+
+    def test_admin_get_users(self):
+        """Test getting users list as admin"""
+        if not self.test_user_id:
+            print("❌ No test user ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Admin: Get Users",
+            "GET",
+            "admin/users",
+            200,
+            params={"admin_id": self.test_user_id}
+        )
+        
+        if success and isinstance(response, list):
+            print(f"✅ Retrieved {len(response)} users as admin")
+            return True
+        return False
+
+    def test_admin_update_user(self):
+        """Test updating user as admin"""
+        if not self.test_user_id:
+            print("❌ No test user ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Admin: Update User",
+            "PUT",
+            f"admin/users/{self.test_user_id}",
+            200,
+            data={"coins": 5000},
+            params={"admin_id": self.test_user_id}
+        )
+        
+        if success and response.get('coins') == 5000:
+            print(f"✅ Admin updated user coins to 5000")
+            return True
+        return False
+
+    def test_ghost_mode_admin_only(self):
+        """Test ghost mode toggle (admin only)"""
+        if not self.test_user_id:
+            print("❌ No test user ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Ghost Mode: Toggle",
+            "POST",
+            f"users/{self.test_user_id}/ghost-mode",
+            200
+        )
+        
+        if success and 'ghost_mode' in response:
+            print(f"✅ Ghost mode toggled to: {response['ghost_mode']}")
+            return True
+        return False
+
+    def test_create_reel(self):
+        """Test creating a reel"""
+        if not self.test_user_id:
+            print("❌ No test user ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Reels: Create Reel",
+            "POST",
+            "reels",
+            200,
+            data={
+                "user_id": self.test_user_id,
+                "title": "Test Reel",
+                "description": "This is a test reel",
+                "video_url": ""
+            }
+        )
+        
+        if success and response.get('id'):
+            self.test_reel_id = response['id']
+            print(f"✅ Reel created with ID: {self.test_reel_id}")
+            return True
+        return False
+
+    def test_get_reels(self):
+        """Test getting reels list"""
+        success, response = self.run_test(
+            "Reels: Get Reels",
+            "GET",
+            "reels",
+            200
+        )
+        
+        if success and isinstance(response, list):
+            print(f"✅ Retrieved {len(response)} reels")
+            return True
+        return False
+
+    def test_like_reel(self):
+        """Test liking a reel"""
+        if not self.test_user_id or not hasattr(self, 'test_reel_id'):
+            print("❌ No test user or reel ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Reels: Like Reel",
+            "POST",
+            f"reels/{self.test_reel_id}/like",
+            200,
+            params={"user_id": self.test_user_id}
+        )
+        
+        if success and response.get('success'):
+            print(f"✅ Reel liked, total likes: {response.get('likes', 0)}")
+            return True
+        return False
+
+    def test_create_photo(self):
+        """Test creating a photo"""
+        if not self.test_user_id:
+            print("❌ No test user ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Photos: Create Photo",
+            "POST",
+            "photos",
+            200,
+            data={
+                "user_id": self.test_user_id,
+                "title": "Test Photo",
+                "image_url": "https://picsum.photos/400/400",
+                "description": "This is a test photo"
+            }
+        )
+        
+        if success and response.get('id'):
+            self.test_photo_id = response['id']
+            print(f"✅ Photo created with ID: {self.test_photo_id}")
+            return True
+        return False
+
+    def test_get_photos(self):
+        """Test getting photos list"""
+        success, response = self.run_test(
+            "Photos: Get Photos",
+            "GET",
+            "photos",
+            200
+        )
+        
+        if success and isinstance(response, list):
+            print(f"✅ Retrieved {len(response)} photos")
+            return True
+        return False
+
+    def test_like_photo(self):
+        """Test liking a photo"""
+        if not self.test_user_id or not hasattr(self, 'test_photo_id'):
+            print("❌ No test user or photo ID available")
+            return False
+            
+        success, response = self.run_test(
+            "Photos: Like Photo",
+            "POST",
+            f"photos/{self.test_photo_id}/like",
+            200,
+            params={"user_id": self.test_user_id}
+        )
+        
+        if success and response.get('success'):
+            print(f"✅ Photo liked, total likes: {response.get('likes', 0)}")
+            return True
+        return False
+
 def main():
     print("🌧️ Starting Lluvia Live API Tests...")
     tester = LluviaLiveAPITester()
@@ -431,6 +639,26 @@ def main():
     tester.test_game_trivia()
     tester.test_game_carta_mayor()
     tester.test_games_insufficient_coins()
+    
+    # Test NEW features: Admin, Ghost Mode, Reels, Photos
+    print(f"\n👑 Testing Admin Features...")
+    tester.test_admin_set_admin_invalid_key()  # Test invalid key first
+    tester.test_admin_set_admin()  # Make user admin
+    tester.test_admin_get_users()
+    tester.test_admin_update_user()
+    
+    print(f"\n👻 Testing Ghost Mode...")
+    tester.test_ghost_mode_admin_only()
+    
+    print(f"\n🎬 Testing Reels...")
+    tester.test_create_reel()
+    tester.test_get_reels()
+    tester.test_like_reel()
+    
+    print(f"\n📸 Testing Photos...")
+    tester.test_create_photo()
+    tester.test_get_photos()
+    tester.test_like_photo()
     
     # Print results
     print(f"\n📊 Test Results:")
