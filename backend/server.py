@@ -466,18 +466,197 @@ async def toggle_ghost_mode(user_id: str):
     user = await db.users.find_one({"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
     user_role = user.get('role', 'usuario')
     if not has_permission(user_role, 'admin'):
         raise HTTPException(status_code=403, detail="Solo admin o dueño puede usar Modo Fantasma")
-    
     new_mode = not user.get('ghost_mode', False)
-    await db.users.update_one(
-        {"id": user_id},
-        {"$set": {"ghost_mode": new_mode}}
-    )
-    
+    await db.users.update_one({"id": user_id}, {"$set": {"ghost_mode": new_mode}})
     return {"success": True, "ghost_mode": new_mode}
+
+# ==================== CLANES ====================
+
+class ClanCreate(BaseModel):
+    name: str
+    owner_id: str
+
+@api_router.post("/clanes")
+async def create_clan(data: ClanCreate):
+    owner = await db.users.find_one({"id": data.owner_id})
+    if not owner:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    existing = await db.clanes.find_one({"name": data.name})
+    if existing:
+        raise HTTPException(status_code=400, detail="Clan ya existe")
+    clan_id = str(uuid.uuid4())
+    clan_doc = {
+        "id": clan_id, "name": data.name, "owner_id": data.owner_id,
+        "owner_name": owner['username'], "members": [data.owner_id],
+        "total_coins": 0, "weekly_coins": 0, "monthly_coins": 0,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.clanes.insert_one(clan_doc)
+    await db.users.update_one({"id": data.owner_id}, {"$set": {"clan_id": clan_id, "clan_name": data.name}})
+    clan_doc.pop('_id', None)
+    return clan_doc
+
+@api_router.get("/clanes")
+async def get_clanes():
+    clanes = await db.clanes.find().sort("weekly_coins", -1).to_list(50)
+    return [{k: v for k, v in c.items() if k != "_id"} for c in clanes]
+
+@api_router.post("/clanes/{clan_id}/join")
+async def join_clan(clan_id: str, user_id: str):
+    clan = await db.clanes.find_one({"id": clan_id})
+    if not clan:
+        raise HTTPException(status_code=404, detail="Clan no encontrado")
+    if user_id in clan.get('members', []):
+        raise HTTPException(status_code=400, detail="Ya eres miembro")
+    await db.clanes.update_one({"id": clan_id}, {"$push": {"members": user_id}})
+    await db.users.update_one({"id": user_id}, {"$set": {"clan_id": clan_id, "clan_name": clan['name']}})
+    return {"success": True}
+
+@api_router.post("/clanes/{clan_id}/leave")
+async def leave_clan(clan_id: str, user_id: str):
+    await db.clanes.update_one({"id": clan_id}, {"$pull": {"members": user_id}})
+    await db.users.update_one({"id": user_id}, {"$set": {"clan_id": None, "clan_name": None}})
+    return {"success": True}
+
+# ==================== PAREJAS (CP) ====================
+
+class CPCreate(BaseModel):
+    user1_id: str
+    user2_id: str
+
+@api_router.post("/cp/create")
+async def create_cp(data: CPCreate):
+    u1 = await db.users.find_one({"id": data.user1_id})
+    u2 = await db.users.find_one({"id": data.user2_id})
+    if not u1 or not u2:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    cp_id = str(uuid.uuid4())
+    cp_doc = {
+        "id": cp_id, "user1_id": data.user1_id, "user2_id": data.user2_id,
+        "user1_name": u1['username'], "user2_name": u2['username'],
+        "level": 1, "total_coins": 0,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.parejas.insert_one(cp_doc)
+    await db.users.update_one({"id": data.user1_id}, {"$set": {"cp_id": cp_id, "cp_partner": u2['username']}})
+    await db.users.update_one({"id": data.user2_id}, {"$set": {"cp_id": cp_id, "cp_partner": u1['username']}})
+    cp_doc.pop('_id', None)
+    return cp_doc
+
+@api_router.get("/cp")
+async def get_parejas():
+    cps = await db.parejas.find().sort("total_coins", -1).to_list(50)
+    return [{k: v for k, v in c.items() if k != "_id"} for c in cps]
+
+@api_router.post("/cp/{cp_id}/level-up")
+async def cp_level_up(cp_id: str):
+    cp = await db.parejas.find_one({"id": cp_id})
+    if not cp:
+        raise HTTPException(status_code=404, detail="Pareja no encontrada")
+    new_level = cp.get('level', 1) + 1
+    bonus = 0
+    if new_level == 6:
+        bonus = 5000000
+    elif new_level == 7:
+        bonus = 5000000
+    await db.parejas.update_one({"id": cp_id}, {"$set": {"level": new_level}})
+    if bonus > 0:
+        await db.users.update_one({"id": cp['user1_id']}, {"$inc": {"coins": bonus}})
+        await db.users.update_one({"id": cp['user2_id']}, {"$inc": {"coins": bonus}})
+    return {"success": True, "new_level": new_level, "bonus": bonus}
+
+# ==================== EVENTOS Y PREMIOS ====================
+
+@api_router.post("/events/weekly-rewards")
+async def distribute_weekly_rewards(admin_id: str):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or admin.get('role') != 'dueño':
+        raise HTTPException(status_code=403, detail="Solo el dueño puede distribuir premios")
+    top_users = await db.users.find().sort("coins", -1).limit(3).to_list(3)
+    rewards = [45000000, 35000000, 25000000]
+    results = []
+    for i, u in enumerate(top_users):
+        if i < len(rewards):
+            await db.users.update_one({"id": u['id']}, {
+                "$inc": {"coins": rewards[i]},
+                "$push": {"badges": f"🏆 Top {i+1} Semanal"}
+            })
+            results.append({"username": u['username'], "place": i+1, "reward": rewards[i]})
+    await db.events.insert_one({
+        "id": str(uuid.uuid4()), "type": "weekly", "results": results,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    return {"success": True, "results": results}
+
+@api_router.post("/events/baby-robot")
+async def baby_robot_prize(admin_id: str):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or admin.get('role') != 'dueño':
+        raise HTTPException(status_code=403, detail="Solo el dueño")
+    total = 0
+    async for u in db.users.find():
+        total += u.get('coins', 0)
+    if total >= 25000000:
+        users = await db.users.find().to_list(500)
+        bonus_per_user = 15000000 // max(len(users), 1)
+        for u in users:
+            await db.users.update_one({"id": u['id']}, {"$inc": {"coins": bonus_per_user}})
+        return {"success": True, "total_global": total, "bonus_per_user": bonus_per_user, "users_rewarded": len(users)}
+    return {"success": False, "total_global": total, "needed": 25000000, "message": "Meta no alcanzada"}
+
+@api_router.post("/events/king-level")
+async def king_level_reward(user_id: str):
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    new_level = user.get('level', 1) + 1
+    bonus = 3000000
+    await db.users.update_one({"id": user_id}, {"$inc": {"coins": bonus, "level": 1}})
+    updated = await db.users.find_one({"id": user_id})
+    return {"success": True, "new_level": new_level, "bonus": bonus, "new_coins": updated['coins']}
+
+@api_router.post("/events/clan-rewards")
+async def clan_rewards(admin_id: str):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or admin.get('role') != 'dueño':
+        raise HTTPException(status_code=403, detail="Solo el dueño")
+    top_clans = await db.clanes.find().sort("weekly_coins", -1).limit(3).to_list(3)
+    rewards = [30000000, 20000000, 10000000]
+    results = []
+    for i, clan in enumerate(top_clans):
+        if i < len(rewards):
+            per_member = rewards[i] // max(len(clan.get('members', [])), 1)
+            for mid in clan.get('members', []):
+                await db.users.update_one({"id": mid}, {"$inc": {"coins": per_member}})
+            results.append({"clan": clan['name'], "place": i+1, "total_reward": rewards[i]})
+    return {"success": True, "results": results}
+
+@api_router.get("/events/history")
+async def get_events():
+    events = await db.events.find().sort("created_at", -1).to_list(50)
+    return [{k: v for k, v in e.items() if k != "_id"} for e in events]
+
+# ==================== ANIMATED ENTRIES ====================
+
+@api_router.get("/users/{user_id}/entry-animation")
+async def get_entry_animation(user_id: str):
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    arist = user.get('aristocracy', 0)
+    level = user.get('level', 1)
+    if arist >= 9 or level >= 90:
+        return {"animation": "dragon", "emoji": "🐉", "text": "¡EL DRAGÓN HA LLEGADO!", "color": "gold"}
+    elif arist >= 7 or level >= 70:
+        return {"animation": "eagle", "emoji": "🦅", "text": "¡EL ÁGUILA HA ATERRIZADO!", "color": "silver"}
+    elif arist >= 5 or level >= 50:
+        return {"animation": "fire", "emoji": "🔥", "text": "¡FUEGO EN LA SALA!", "color": "orange"}
+    elif arist >= 3 or level >= 30:
+        return {"animation": "star", "emoji": "⭐", "text": "¡Una estrella llega!", "color": "blue"}
+    return {"animation": "none", "emoji": "👋", "text": f"{user['username']} entró a la sala", "color": "gray"}
 
 # ==================== REELS ====================
 
