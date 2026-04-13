@@ -1709,6 +1709,155 @@ async def stripe_webhook(request: Request):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
+# ==================== AI ADMIN BOT ====================
+
+from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+class BotMessage(BaseModel):
+    admin_id: str
+    message: str
+
+@api_router.post("/bot/command")
+async def bot_command(msg: BotMessage):
+    # Only owner can use
+    admin = await db.users.find_one({"id": msg.admin_id})
+    if not admin or admin.get('role') != 'dueño':
+        raise HTTPException(status_code=403, detail="Solo el dueño puede usar el Bot")
+    
+    # Get context
+    total_users = await db.users.count_documents({})
+    total_rooms = await db.rooms.count_documents({})
+    online_seats = 0
+    rooms_data = await db.rooms.find().to_list(100)
+    for r in rooms_data:
+        online_seats += sum(1 for s in r.get('seats', []) if s)
+    
+    top_spender = await db.users.find().sort("total_spent", -1).limit(1).to_list(1)
+    top_rich = await db.users.find().sort("coins", -1).limit(3).to_list(3)
+    total_coins = sum(u.get('coins', 0) for u in await db.users.find().to_list(500))
+    
+    all_users = await db.users.find({}, {"_id": 0, "password": 0}).to_list(50)
+    user_list = ", ".join([f"{u['username']}(Lv.{u.get('level',1)},coins:{u.get('coins',0)})" for u in all_users[:20]])
+    
+    context = f"""
+DATOS DE LLUVIA LIVE:
+- Total usuarios: {total_users}
+- Total salas: {total_rooms}
+- Usuarios en salas ahora: {online_seats}
+- Total monedas en circulación: {total_coins:,}
+- Top rico: {top_rich[0]['username'] if top_rich else 'N/A'} ({top_rich[0].get('coins',0):,} coins)
+- Top gastador: {top_spender[0]['username'] if top_spender else 'N/A'}
+- Usuarios: {user_list}
+- Salas: {', '.join([f"{r['name']}({r.get('active_users',0)} online)" for r in rooms_data])}
+
+ACCIONES DISPONIBLES:
+Si me piden ejecutar una acción, respondo con JSON:
+{{"action": "nombre_accion", "params": {{...}}}}
+
+Acciones:
+- ban_user: {{"action":"ban_user","params":{{"username":"X"}}}}
+- unban_user: {{"action":"unban_user","params":{{"username":"X"}}}}
+- give_coins: {{"action":"give_coins","params":{{"username":"X","amount":N}}}}
+- set_level: {{"action":"set_level","params":{{"username":"X","level":N}}}}
+- set_aristocracy: {{"action":"set_aristocracy","params":{{"username":"X","aristocracy":N}}}}
+- verify_user: {{"action":"verify_user","params":{{"username":"X"}}}}
+- broadcast: {{"action":"broadcast","params":{{"message":"X"}}}}
+- expand_room: {{"action":"expand_room","params":{{"room_name":"X","seats":N}}}}
+
+Si es solo una CONSULTA, respondo en texto normal sin JSON.
+"""
+    
+    llm_key = os.environ.get('EMERGENT_LLM_KEY')
+    chat = LlmChat(
+        api_key=llm_key,
+        session_id=f"admin_bot_{msg.admin_id}",
+        system_message=f"Eres el Bot Administrativo de Lluvia Live. Solo respondes al dueño. Respondes en español. Si te piden una acción, responde SOLO con el JSON de acción. Si te preguntan datos, responde con la info. Sé conciso.\n\n{context}"
+    )
+    chat.with_model("gemini", "gemini-2.5-flash")
+    
+    user_msg = UserMessage(text=msg.message)
+    response = await chat.send_message(user_msg)
+    
+    # Check if response has action
+    action_result = None
+    try:
+        import json as json_mod
+        resp_text = response.strip()
+        if '{' in resp_text and '"action"' in resp_text:
+            start = resp_text.index('{')
+            end = resp_text.rindex('}') + 1
+            action_data = json_mod.loads(resp_text[start:end])
+            action = action_data.get('action')
+            params = action_data.get('params', {})
+            
+            if action == 'ban_user':
+                target = await db.users.find_one({"username": params.get('username')})
+                if target:
+                    await db.users.update_one({"id": target['id']}, {"$set": {"banned": True}})
+                    action_result = f"Usuario {params['username']} baneado"
+            elif action == 'unban_user':
+                target = await db.users.find_one({"username": params.get('username')})
+                if target:
+                    await db.users.update_one({"id": target['id']}, {"$set": {"banned": False}})
+                    action_result = f"Usuario {params['username']} desbaneado"
+            elif action == 'give_coins':
+                target = await db.users.find_one({"username": params.get('username')})
+                if target:
+                    await db.users.update_one({"id": target['id']}, {"$inc": {"coins": params.get('amount', 0)}})
+                    action_result = f"+{params.get('amount',0):,} monedas a {params['username']}"
+            elif action == 'set_level':
+                target = await db.users.find_one({"username": params.get('username')})
+                if target:
+                    await db.users.update_one({"id": target['id']}, {"$set": {"level": min(params.get('level', 1), 99)}})
+                    action_result = f"Nivel de {params['username']} = {params.get('level')}"
+            elif action == 'set_aristocracy':
+                target = await db.users.find_one({"username": params.get('username')})
+                if target:
+                    await db.users.update_one({"id": target['id']}, {"$set": {"aristocracy": min(params.get('aristocracy', 0), 10)}})
+                    action_result = f"Aristocracia de {params['username']} = {params.get('aristocracy')}"
+            elif action == 'verify_user':
+                target = await db.users.find_one({"username": params.get('username')})
+                if target:
+                    badges = list(target.get('badges', []))
+                    if '✅ Verificado' not in badges: badges.append('✅ Verificado')
+                    await db.users.update_one({"id": target['id']}, {"$set": {"verified": True, "badges": badges}})
+                    action_result = f"{params['username']} verificado"
+            elif action == 'broadcast':
+                await db.broadcasts.insert_one({"id": str(uuid.uuid4()), "message": params.get('message',''), "sender": "Bot Admin", "created_at": datetime.now(timezone.utc).isoformat()})
+                action_result = f"Mensaje enviado: {params.get('message')}"
+            elif action == 'expand_room':
+                room = await db.rooms.find_one({"name": {"$regex": params.get('room_name', ''), "$options": "i"}})
+                if room:
+                    seats = room.get('seats', [])
+                    new_max = params.get('seats', 9)
+                    if new_max > len(seats):
+                        seats.extend([None] * (new_max - len(seats)))
+                    await db.rooms.update_one({"id": room['id']}, {"$set": {"seats": seats, "max_seats": new_max}})
+                    action_result = f"Sala {room['name']} expandida a {new_max} micros"
+    except Exception as e:
+        action_result = None
+    
+    # Save to chat history
+    await db.bot_history.insert_one({
+        "id": str(uuid.uuid4()),
+        "admin_id": msg.admin_id,
+        "message": msg.message,
+        "response": response,
+        "action_result": action_result,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    })
+    
+    return {"response": response, "action_result": action_result}
+
+@api_router.get("/bot/history")
+async def get_bot_history(admin_id: str):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or admin.get('role') != 'dueño':
+        raise HTTPException(status_code=403, detail="Solo el dueño")
+    history = await db.bot_history.find({"admin_id": admin_id}).sort("created_at", -1).limit(20).to_list(20)
+    history.reverse()
+    return [{k: v for k, v in h.items() if k != "_id"} for h in history]
+
 # ==================== SETUP ====================
 
 app.include_router(api_router)

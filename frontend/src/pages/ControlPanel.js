@@ -193,6 +193,7 @@ const ControlPanel = ({ onBack }) => {
     { id: 'rooms', label: '🏠 Salas', icon: '🏠' },
     { id: 'config', label: '⚙️ Config', icon: '⚙️' },
     { id: 'console', label: '💻 Consola', icon: '💻' },
+    { id: 'bot', label: '🤖 Bot IA', icon: '🤖' },
   ];
 
   return (
@@ -572,6 +573,110 @@ const ControlPanel = ({ onBack }) => {
             </div>
           </div>
         )}
+
+        {/* BOT IA */}
+        {activeTab === 'bot' && (
+          <BotTab userId={user.id} />
+        )}
+      </div>
+    </div>
+  );
+};
+
+const BotTab = ({ userId }) => {
+  const [input, setInput] = useState('');
+  const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => { loadHistory(); }, []);
+
+  const loadHistory = async () => {
+    try {
+      const res = await axios.get(`${API}/bot/history?admin_id=${userId}`);
+      setHistory(res.data);
+    } catch (err) { console.error(err); }
+  };
+
+  const send = async () => {
+    if (!input.trim() || loading) return;
+    setLoading(true);
+    try {
+      const res = await axios.post(`${API}/bot/command`, { admin_id: userId, message: input });
+      setHistory(prev => [...prev, {
+        message: input,
+        response: res.data.response,
+        action_result: res.data.action_result,
+        created_at: new Date().toISOString()
+      }]);
+      setInput('');
+    } catch (err) { alert(err.response?.data?.detail || 'Error'); }
+    setLoading(false);
+  };
+
+  const quickCommands = [
+    '¿Cuántos usuarios hay?',
+    '¿Quién es el más rico?',
+    '¿Cuánta gente hay en salas?',
+    'Manda aviso: Evento en 10 minutos',
+  ];
+
+  return (
+    <div>
+      <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-2xl p-4 mb-4 text-center">
+        <div className="text-4xl mb-2">🤖</div>
+        <h3 className="text-xl font-black text-white">Bot Administrativo IA</h3>
+        <p className="text-white/60 text-xs">Pregúntame lo que quieras o dame órdenes</p>
+      </div>
+
+      {/* Quick Commands */}
+      <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+        {quickCommands.map((cmd, i) => (
+          <button key={i} onClick={() => setInput(cmd)}
+            className="bg-gray-800 text-gray-300 px-3 py-1.5 rounded-full text-xs whitespace-nowrap border border-gray-700 hover:border-purple-500">
+            {cmd}
+          </button>
+        ))}
+      </div>
+
+      {/* Chat History */}
+      <div className="bg-gray-900 rounded-2xl border border-gray-800 p-4 mb-4 h-80 overflow-y-auto space-y-3">
+        {history.map((h, i) => (
+          <div key={i}>
+            <div className="flex justify-end mb-1">
+              <div className="bg-purple-600 text-white px-3 py-2 rounded-xl rounded-tr-none text-sm max-w-xs">
+                {h.message}
+              </div>
+            </div>
+            <div className="flex justify-start mb-1">
+              <div className="bg-gray-800 text-gray-200 px-3 py-2 rounded-xl rounded-tl-none text-sm max-w-xs">
+                <div className="whitespace-pre-wrap">{h.response?.replace(/```json[\s\S]*?```/g, '').replace(/\{[\s\S]*?\}/g, '').trim() || h.response}</div>
+                {h.action_result && (
+                  <div className="mt-1 bg-green-900/50 text-green-400 px-2 py-1 rounded text-xs font-bold">
+                    ✅ {h.action_result}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+        {history.length === 0 && (
+          <div className="text-center text-gray-600 py-12">
+            <div className="text-4xl mb-2">🤖</div>
+            <p>Escribe tu primer comando...</p>
+          </div>
+        )}
+      </div>
+
+      {/* Input */}
+      <div className="flex gap-2">
+        <input type="text" value={input} onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && send()}
+          placeholder="Escribe un comando o pregunta..."
+          className="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white outline-none focus:border-purple-500" />
+        <button onClick={send} disabled={loading}
+          className="bg-gradient-to-r from-purple-600 to-indigo-600 text-white px-6 py-3 rounded-xl font-bold disabled:opacity-50">
+          {loading ? '...' : '🤖'}
+        </button>
       </div>
     </div>
   );
