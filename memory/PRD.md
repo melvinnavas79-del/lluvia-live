@@ -5,26 +5,28 @@ Aplicacion social de audio streaming "Lluvia Live" con salas de audio en vivo (A
 
 ## Requisitos del Producto
 - Audio Streaming Rooms via Agora.io (Mic/Speaker, auto-mute, sin duplicar asientos)
-- Gamificacion: Entradas VIP (Dragon, Leon, Tigre, etc.), Aristocracia, CP (Parejas), Clanes
+- Gamificacion: Entradas VIP, Aristocracia, CP (Parejas), Clanes
 - Economia: Coins, Diamonds, Stripe Payments, premios automaticos
 - 6 Juegos: Ludo (pendiente webview), Ruleta, Dados, PPT, Carta Mayor, Trivia, Slots 777
 - Multimedia: Upload Reels y Fotos
 - Panel de Control: Editar precios, expandir micros (9 a 24), gestionar usuarios
 - AI Admin Bot: Ejecutar acciones via lenguaje natural (Gemini)
 - PWA, Android build script, iOS project setup, VPS install script
-- Marca: "Lluvia Live"
-- Notificaciones: 4 categorias (Regalos Globales, Eventos CP, Alertas Conexion, Invitaciones Estrategia)
+- Notificaciones: 4 categorias (Regalos Globales, Eventos CP, Alertas Conexion, Invitaciones)
+- Flash Fame: Top 1 Individual, Clan Semanal, Clan Mensual, Pareja CP #1
+- Fotos de Perfil: Upload de avatar propio
+- Boton "Abrir Sala" directo y claro
 
 ## Arquitectura
-- Frontend: React.js + TailwindCSS + Shadcn/UI
+- Frontend: React.js + TailwindCSS
 - Backend: FastAPI + Motor (Async MongoDB)
 - DB: MongoDB
 - Audio: Agora.io Web SDK
 - AI: emergentintegrations (Gemini)
 - Pagos: Stripe
 
-## Lo Implementado
-- [x] Full app frontend/backend desde cero
+## Implementado
+- [x] Full app frontend/backend
 - [x] Agora.io Audio WebRTC
 - [x] File Uploads (Reels y Photos)
 - [x] Gamificacion & Entradas VIP (Lottie)
@@ -34,29 +36,29 @@ Aplicacion social de audio streaming "Lluvia Live" con salas de audio en vivo (A
 - [x] PWA, iOS scaffold, Android build, VPS script
 - [x] Clanes - Crear, unirse, salir, ranking
 - [x] Parejas CP - Crear, ranking, nivel
-- [x] Controles de audio al fondo de la sala (fixed bottom)
-- [x] Tarjetas de Clan y Pareja clickeables en Dashboard
-- [x] RoomView estabilizado (h-screen, overflow-hidden, sin scroll de pagina)
-- [x] Sistema de Notificaciones con 4 categorias:
-  - Regalos Globales (ON/OFF) - dragones, fenix, etc
-  - Eventos CP/Batallas (ON/OFF) - competencias en tiempo real
-  - Alertas de Conexion (ON/OFF) - quien entro a la app
-  - Invitaciones de Estrategia (AUTO) - "Fulano esta en live"
+- [x] RoomView estabilizado (h-screen, overflow-hidden)
+- [x] Controles de audio al fondo de la sala
+- [x] Sistema de Notificaciones con 4 categorias con toggles
 - [x] Campana con badge de no leidos en Dashboard
+- [x] Flash Fame: Top 1 Individual, Clan Semanal, Clan Mensual, Pareja #1
+- [x] Upload de foto de perfil (avatar personalizado)
+- [x] Boton "Abrir Sala" en bottom nav y tab Mio
+- [x] Perfil muestra clan, pareja, badges dinamicos
 
-## Backlog (P0/P1/P2)
+## Backlog
 - P0: Integrar juego Ludo como WebView/iframe
-- P1: Push codigo a GitHub del usuario
-- P2: Refactorizar server.py monolitico en modulos separados
+- P1: Push codigo a GitHub
+- P2: Refactorizar server.py monolitico
 
 ## Credenciales
 - Usuario: Melvin_Live / test123
+- Agora: eccc145929e240a2b26f696a3a2ce542
 
 ## Archivos Clave
 - `/app/backend/server.py` - Backend monolitico
-- `/app/frontend/src/pages/RoomView.js` - Sala estabilizada con audio controls
-- `/app/frontend/src/pages/NotificationsView.js` - Sistema de notificaciones
-- `/app/frontend/src/pages/ClanesView.js` - Vista de Clanes
-- `/app/frontend/src/pages/ParejasView.js` - Vista de Parejas
-- `/app/frontend/src/pages/Dashboard.js` - Dashboard con campana de notificaciones
-- `/app/frontend/src/App.js` - Navegacion
+- `/app/frontend/src/pages/Dashboard.js` - Flash Fame + Abrir Sala
+- `/app/frontend/src/pages/ProfileView.js` - Upload de avatar
+- `/app/frontend/src/pages/RoomView.js` - Sala estabilizada
+- `/app/frontend/src/pages/NotificationsView.js` - Notificaciones
+- `/app/frontend/src/pages/ClanesView.js` - Clanes
+- `/app/frontend/src/pages/ParejasView.js` - Parejas
