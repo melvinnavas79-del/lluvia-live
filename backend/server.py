@@ -467,6 +467,105 @@ async def admin_delete_user(user_id: str, admin_id: str):
     await db.users.delete_one({"id": user_id})
     return {"success": True}
 
+# ==================== VERIFICATION ====================
+
+@api_router.post("/admin/verify-user")
+async def verify_user(user_id: str, admin_id: str):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or not has_permission(admin.get('role', 'usuario'), 'admin'):
+        raise HTTPException(status_code=403, detail="No tienes permisos")
+    
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    badges = list(user.get('badges', []))
+    if '✅ Verificado' not in badges:
+        badges.append('✅ Verificado')
+    
+    await db.users.update_one({"id": user_id}, {"$set": {"verified": True, "badges": badges}})
+    return {"success": True}
+
+@api_router.post("/admin/unverify-user")
+async def unverify_user(user_id: str, admin_id: str):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or not has_permission(admin.get('role', 'usuario'), 'admin'):
+        raise HTTPException(status_code=403, detail="No tienes permisos")
+    
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    badges = [b for b in user.get('badges', []) if b != '✅ Verificado']
+    await db.users.update_one({"id": user_id}, {"$set": {"verified": False, "badges": badges}})
+    return {"success": True}
+
+# ==================== CONSOLE (Bulk Actions) ====================
+
+@api_router.post("/admin/console/give-coins")
+async def console_give_coins(admin_id: str, target_id: str, amount: int):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or admin.get('role') != 'dueño':
+        raise HTTPException(status_code=403, detail="Solo el dueño")
+    await db.users.update_one({"id": target_id}, {"$inc": {"coins": amount}})
+    user = await db.users.find_one({"id": target_id})
+    return {"success": True, "new_coins": user['coins']}
+
+@api_router.post("/admin/console/set-level")
+async def console_set_level(admin_id: str, target_id: str, level: int):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or admin.get('role') != 'dueño':
+        raise HTTPException(status_code=403, detail="Solo el dueño")
+    await db.users.update_one({"id": target_id}, {"$set": {"level": min(level, 99)}})
+    return {"success": True}
+
+@api_router.post("/admin/console/set-aristocracy")
+async def console_set_aristocracy(admin_id: str, target_id: str, aristocracy: int):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or admin.get('role') != 'dueño':
+        raise HTTPException(status_code=403, detail="Solo el dueño")
+    await db.users.update_one({"id": target_id}, {"$set": {"aristocracy": min(aristocracy, 10)}})
+    return {"success": True}
+
+@api_router.post("/admin/console/ban")
+async def console_ban(admin_id: str, target_id: str):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or not has_permission(admin.get('role', 'usuario'), 'moderador'):
+        raise HTTPException(status_code=403, detail="No tienes permisos")
+    target = await db.users.find_one({"id": target_id})
+    if target and target.get('role') == 'dueño':
+        raise HTTPException(status_code=403, detail="No puedes banear al dueño")
+    await db.users.update_one({"id": target_id}, {"$set": {"banned": True, "vip_status": "BANNED"}})
+    return {"success": True}
+
+@api_router.post("/admin/console/unban")
+async def console_unban(admin_id: str, target_id: str):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or not has_permission(admin.get('role', 'usuario'), 'moderador'):
+        raise HTTPException(status_code=403, detail="No tienes permisos")
+    await db.users.update_one({"id": target_id}, {"$set": {"banned": False, "vip_status": "NORMAL"}})
+    return {"success": True}
+
+@api_router.post("/admin/console/broadcast")
+async def console_broadcast(admin_id: str, message: str):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or admin.get('role') != 'dueño':
+        raise HTTPException(status_code=403, detail="Solo el dueño")
+    broadcast = {
+        "id": str(uuid.uuid4()),
+        "message": message,
+        "sender": admin['username'],
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.broadcasts.insert_one(broadcast)
+    broadcast.pop('_id', None)
+    return {"success": True, "broadcast": broadcast}
+
+@api_router.get("/broadcasts")
+async def get_broadcasts():
+    msgs = await db.broadcasts.find().sort("created_at", -1).limit(10).to_list(10)
+    return [{k: v for k, v in m.items() if k != "_id"} for m in msgs]
+
 @api_router.delete("/admin/rooms/{room_id}")
 async def admin_delete_room(room_id: str, admin_id: str):
     admin = await db.users.find_one({"id": admin_id})

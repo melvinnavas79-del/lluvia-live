@@ -66,6 +66,53 @@ const ControlPanel = ({ onBack }) => {
     } catch (err) { alert(err.response?.data?.detail || 'Error'); }
   };
 
+  const verifyUser = async (userId) => {
+    try {
+      await axios.post(`${API}/admin/verify-user?user_id=${userId}&admin_id=${user.id}`);
+      loadAll();
+    } catch (err) { alert(err.response?.data?.detail || 'Error'); }
+  };
+
+  const [consoleCmd, setConsoleCmd] = useState('');
+  const [consoleTarget, setConsoleTarget] = useState('');
+  const [consoleValue, setConsoleValue] = useState('');
+  const [broadcastMsg, setBroadcastMsg] = useState('');
+
+  const runConsole = async (action) => {
+    const target = consoleTarget;
+    if (!target && action !== 'broadcast') return alert('Selecciona un usuario');
+    try {
+      let res;
+      switch(action) {
+        case 'give-coins':
+          res = await axios.post(`${API}/admin/console/give-coins?admin_id=${user.id}&target_id=${target}&amount=${Number(consoleValue)}`);
+          break;
+        case 'set-level':
+          res = await axios.post(`${API}/admin/console/set-level?admin_id=${user.id}&target_id=${target}&level=${Number(consoleValue)}`);
+          break;
+        case 'set-aristocracy':
+          res = await axios.post(`${API}/admin/console/set-aristocracy?admin_id=${user.id}&target_id=${target}&aristocracy=${Number(consoleValue)}`);
+          break;
+        case 'verify':
+          res = await axios.post(`${API}/admin/verify-user?user_id=${target}&admin_id=${user.id}`);
+          break;
+        case 'ban':
+          res = await axios.post(`${API}/admin/console/ban?admin_id=${user.id}&target_id=${target}`);
+          break;
+        case 'unban':
+          res = await axios.post(`${API}/admin/console/unban?admin_id=${user.id}&target_id=${target}`);
+          break;
+        case 'broadcast':
+          res = await axios.post(`${API}/admin/console/broadcast?admin_id=${user.id}&message=${encodeURIComponent(broadcastMsg)}`);
+          setBroadcastMsg('');
+          break;
+        default: break;
+      }
+      alert('Ejecutado');
+      loadAll();
+    } catch (err) { alert(err.response?.data?.detail || 'Error'); }
+  };
+
   const banUser = async (userId) => {
     if (!window.confirm('¿Banear este usuario?')) return;
     try {
@@ -135,6 +182,7 @@ const ControlPanel = ({ onBack }) => {
     { id: 'clanes', label: '🏷️ Clanes', icon: '🏷️' },
     { id: 'rooms', label: '🏠 Salas', icon: '🏠' },
     { id: 'config', label: '⚙️ Config', icon: '⚙️' },
+    { id: 'console', label: '💻 Consola', icon: '💻' },
   ];
 
   return (
@@ -253,6 +301,8 @@ const ControlPanel = ({ onBack }) => {
                           </select>
                           <button onClick={() => updateUserField(u.id, 'coins', (u.coins || 0) + 10000000)}
                             className="bg-green-900 text-green-400 px-2 py-1 rounded text-xs">+10M</button>
+                          <button onClick={() => verifyUser(u.id)}
+                            className="bg-cyan-900 text-cyan-400 px-2 py-1 rounded text-xs">✅</button>
                           <button onClick={() => updateUserField(u.id, 'level', Math.min((u.level || 1) + 10, 99))}
                             className="bg-blue-900 text-blue-400 px-2 py-1 rounded text-xs">+10Lv</button>
                           <button onClick={() => updateUserField(u.id, 'aristocracy', Math.min((u.aristocracy || 0) + 1, 9))}
@@ -398,6 +448,54 @@ const ControlPanel = ({ onBack }) => {
               ))}
               <button className="w-full bg-gradient-to-r from-yellow-600 to-amber-600 py-3 rounded-xl font-bold mt-4">
                 💾 Guardar Configuración
+              </button>
+            </div>
+          </div>
+        )}
+        {/* CONSOLE */}
+        {activeTab === 'console' && (
+          <div>
+            <h3 className="text-lg font-bold text-yellow-400 mb-4">💻 Consola de Comandos</h3>
+            
+            {/* Select User */}
+            <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-4">
+              <label className="text-gray-400 text-sm mb-2 block">👤 Usuario objetivo:</label>
+              <select value={consoleTarget} onChange={e => setConsoleTarget(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white">
+                <option value="">-- Seleccionar --</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id}>{u.username} (Lv.{u.level}) {u.verified ? '✅' : ''}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Value Input */}
+            <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-4">
+              <label className="text-gray-400 text-sm mb-2 block">🔢 Valor:</label>
+              <input type="number" value={consoleValue} onChange={e => setConsoleValue(e.target.value)}
+                placeholder="Cantidad"
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white" />
+            </div>
+
+            {/* Actions */}
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <button onClick={() => runConsole('give-coins')} className="bg-green-800 text-green-300 p-3 rounded-xl font-bold text-sm">💰 Dar Monedas</button>
+              <button onClick={() => runConsole('set-level')} className="bg-blue-800 text-blue-300 p-3 rounded-xl font-bold text-sm">⬆️ Set Nivel</button>
+              <button onClick={() => runConsole('set-aristocracy')} className="bg-purple-800 text-purple-300 p-3 rounded-xl font-bold text-sm">👑 Set Aristocracia</button>
+              <button onClick={() => runConsole('verify')} className="bg-cyan-800 text-cyan-300 p-3 rounded-xl font-bold text-sm">✅ Verificar</button>
+              <button onClick={() => runConsole('ban')} className="bg-red-800 text-red-300 p-3 rounded-xl font-bold text-sm">🚫 Banear</button>
+              <button onClick={() => runConsole('unban')} className="bg-yellow-800 text-yellow-300 p-3 rounded-xl font-bold text-sm">🔓 Desbanear</button>
+            </div>
+
+            {/* Broadcast */}
+            <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+              <h4 className="text-white font-bold mb-2">📢 Mensaje Global</h4>
+              <textarea value={broadcastMsg} onChange={e => setBroadcastMsg(e.target.value)}
+                placeholder="Escribe un mensaje para todos los usuarios..."
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white h-20 resize-none mb-3" />
+              <button onClick={() => runConsole('broadcast')}
+                className="w-full bg-gradient-to-r from-yellow-600 to-amber-600 py-3 rounded-xl font-bold">
+                📢 ENVIAR A TODOS
               </button>
             </div>
           </div>
