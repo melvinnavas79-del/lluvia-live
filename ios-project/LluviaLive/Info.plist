@@ -1,0 +1,23 @@
+{
+  "Info": {
+    "CFBundleDevelopmentRegion": "es",
+    "CFBundleDisplayName": "Lluvia Live",
+    "CFBundleExecutable": "$(EXECUTABLE_NAME)",
+    "CFBundleIdentifier": "com.lluvialive.app",
+    "CFBundleInfoDictionaryVersion": "6.0",
+    "CFBundleName": "$(PRODUCT_NAME)",
+    "CFBundlePackageType": "$(PRODUCT_TYPE_FRAMEWORK_HEADER_SEARCH_PATHS)",
+    "CFBundleShortVersionString": "1.0.0",
+    "CFBundleVersion": "1",
+    "LSRequiresIPhoneOS": true,
+    "UIApplicationSceneManifest": {
+      "UIApplicationSupportsMultipleScenes": false
+    },
+    "UILaunchScreen": {},
+    "UISupportedInterfaceOrientations": ["UIInterfaceOrientationPortrait"],
+    "NSMicrophoneUsageDescription": "Lluvia Live necesita acceso al micrófono para audio en salas en vivo",
+    "NSCameraUsageDescription": "Lluvia Live necesita acceso a la cámara para fotos y reels",
+    "NSPhotoLibraryUsageDescription": "Lluvia Live necesita acceso a tus fotos para subir contenido",
+    "ITSAppUsesNonExemptEncryption": false
+  }
+}
