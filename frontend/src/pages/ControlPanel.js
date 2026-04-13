@@ -597,17 +597,32 @@ const BotTab = ({ userId }) => {
     } catch (err) { console.error(err); }
   };
 
+  const [pendingAction, setPendingAction] = useState(null);
+
   const send = async () => {
     if (!input.trim() || loading) return;
     setLoading(true);
     try {
       const res = await axios.post(`${API}/bot/command`, { admin_id: userId, message: input });
-      setHistory(prev => [...prev, {
-        message: input,
-        response: res.data.response,
-        action_result: res.data.action_result,
-        created_at: new Date().toISOString()
-      }]);
+      const hasAction = res.data.action_result;
+      
+      if (hasAction && !input.toLowerCase().startsWith('sí') && !input.toLowerCase().startsWith('si') && !input.toLowerCase().includes('confirmo')) {
+        // Show confirmation
+        setPendingAction(res.data);
+        setHistory(prev => [...prev, {
+          message: input,
+          response: res.data.response,
+          action_result: `⚠️ CONFIRMAR: ${res.data.action_result}\n¿Confirmas? Escribe "SÍ" para ejecutar`,
+          created_at: new Date().toISOString()
+        }]);
+      } else {
+        setHistory(prev => [...prev, {
+          message: input,
+          response: res.data.response,
+          action_result: res.data.action_result,
+          created_at: new Date().toISOString()
+        }]);
+      }
       setInput('');
     } catch (err) { alert(err.response?.data?.detail || 'Error'); }
     setLoading(false);
@@ -616,8 +631,10 @@ const BotTab = ({ userId }) => {
   const quickCommands = [
     '¿Cuántos usuarios hay?',
     '¿Quién es el más rico?',
-    '¿Cuánta gente hay en salas?',
-    'Manda aviso: Evento en 10 minutos',
+    '¿Quiénes están en las salas?',
+    'Regala 1M a todos en la sala',
+    'Paga premios Top 3',
+    'Manda aviso: Evento en 10 min',
   ];
 
   return (

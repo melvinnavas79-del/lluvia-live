@@ -1745,26 +1745,36 @@ DATOS DE LLUVIA LIVE:
 - Total salas: {total_rooms}
 - Usuarios en salas ahora: {online_seats}
 - Total monedas en circulación: {total_coins:,}
+- Mi saldo (Dueño): {admin.get('coins',0):,} monedas, {admin.get('diamonds',0):,} diamantes
 - Top rico: {top_rich[0]['username'] if top_rich else 'N/A'} ({top_rich[0].get('coins',0):,} coins)
 - Top gastador: {top_spender[0]['username'] if top_spender else 'N/A'}
 - Usuarios: {user_list}
-- Salas: {', '.join([f"{r['name']}({r.get('active_users',0)} online)" for r in rooms_data])}
+- Salas y sus usuarios en micros: {', '.join([f"{r['name']}(online:{r.get('active_users',0)}, users:[{','.join([s['username'] for s in r.get('seats',[]) if s])}])" for r in rooms_data])}
 
-ACCIONES DISPONIBLES:
-Si me piden ejecutar una acción, respondo con JSON:
-{{"action": "nombre_accion", "params": {{...}}}}
+ACCIONES DISPONIBLES - Responde SOLO con el JSON:
+{{"action": "nombre", "params": {{...}}, "confirm_message": "texto de confirmación"}}
 
 Acciones:
 - ban_user: {{"action":"ban_user","params":{{"username":"X"}}}}
 - unban_user: {{"action":"unban_user","params":{{"username":"X"}}}}
 - give_coins: {{"action":"give_coins","params":{{"username":"X","amount":N}}}}
+- give_diamonds: {{"action":"give_diamonds","params":{{"username":"X","amount":N}}}}
 - set_level: {{"action":"set_level","params":{{"username":"X","level":N}}}}
 - set_aristocracy: {{"action":"set_aristocracy","params":{{"username":"X","aristocracy":N}}}}
 - verify_user: {{"action":"verify_user","params":{{"username":"X"}}}}
 - broadcast: {{"action":"broadcast","params":{{"message":"X"}}}}
 - expand_room: {{"action":"expand_room","params":{{"room_name":"X","seats":N}}}}
+- pay_room: {{"action":"pay_room","params":{{"room_name":"X","amount":N}}}} (regala monedas a TODOS los que están en los micros de esa sala)
+- pay_user: {{"action":"pay_user","params":{{"username":"X","amount":N}}}} (paga premio a un usuario)
+- pay_top: {{"action":"pay_top","params":{{"prizes":[N1,N2,N3]}}}} (paga premios al top 1,2,3)
+- mute_user: {{"action":"mute_user","params":{{"username":"X"}}}}
+- kick_user: {{"action":"kick_user","params":{{"username":"X"}}}} (saca de la sala)
 
-Si es solo una CONSULTA, respondo en texto normal sin JSON.
+REGLAS:
+1. Para acciones de PAGO, las monedas salen de MI cuenta de dueño
+2. SIEMPRE incluye "confirm_message" con un resumen de lo que vas a hacer
+3. Si es consulta, responde en texto normal SIN JSON
+4. Sé conciso y directo
 """
     
     llm_key = os.environ.get('EMERGENT_LLM_KEY')
@@ -1834,8 +1844,69 @@ Si es solo una CONSULTA, respondo en texto normal sin JSON.
                         seats.extend([None] * (new_max - len(seats)))
                     await db.rooms.update_one({"id": room['id']}, {"$set": {"seats": seats, "max_seats": new_max}})
                     action_result = f"Sala {room['name']} expandida a {new_max} micros"
+            elif action == 'give_diamonds':
+                target = await db.users.find_one({"username": params.get('username')})
+                if target:
+                    amt = params.get('amount', 0)
+                    await db.users.update_one({"id": msg.admin_id}, {"$inc": {"diamonds": -amt}})
+                    await db.users.update_one({"id": target['id']}, {"$inc": {"diamonds": amt}})
+                    action_result = f"+{amt:,} diamantes a {params['username']}"
+            elif action == 'pay_room':
+                room = await db.rooms.find_one({"name": {"$regex": params.get('room_name', ''), "$options": "i"}})
+                if room:
+                    amt = params.get('amount', 0)
+                    seated = [s for s in room.get('seats', []) if s]
+                    if seated:
+                        per_user = amt // len(seated)
+                        total_paid = per_user * len(seated)
+                        await db.users.update_one({"id": msg.admin_id}, {"$inc": {"coins": -total_paid}})
+                        names = []
+                        for s in seated:
+                            await db.users.update_one({"id": s['user_id']}, {"$inc": {"coins": per_user}})
+                            names.append(s['username'])
+                        action_result = f"Pagado {per_user:,} a cada uno en {room['name']}: {', '.join(names)} (Total: {total_paid:,})"
+                        await db.room_chat.insert_one({"id": str(uuid.uuid4()), "room_id": room['id'], "user_id": msg.admin_id, "username": "Bot Admin", "avatar": admin['avatar'], "text": f"🎁 El Dueño regaló {per_user:,} monedas a todos!", "type": "gift", "created_at": datetime.now(timezone.utc).isoformat()})
+            elif action == 'pay_user':
+                target = await db.users.find_one({"username": params.get('username')})
+                if target:
+                    amt = params.get('amount', 0)
+                    await db.users.update_one({"id": msg.admin_id}, {"$inc": {"coins": -amt}})
+                    await db.users.update_one({"id": target['id']}, {"$inc": {"coins": amt}})
+                    action_result = f"Premio de {amt:,} monedas pagado a {params['username']}"
+            elif action == 'pay_top':
+                prizes = params.get('prizes', [45000000, 35000000, 25000000])
+                top = await db.users.find().sort("coins", -1).limit(len(prizes)).to_list(len(prizes))
+                results = []
+                total_paid = 0
+                for i, u in enumerate(top):
+                    if i < len(prizes):
+                        await db.users.update_one({"id": u['id']}, {"$inc": {"coins": prizes[i]}})
+                        total_paid += prizes[i]
+                        results.append(f"#{i+1} {u['username']}: +{prizes[i]:,}")
+                await db.users.update_one({"id": msg.admin_id}, {"$inc": {"coins": -total_paid}})
+                action_result = "Premios Top:\n" + "\n".join(results)
+            elif action == 'mute_user':
+                target_name = params.get('username')
+                for r in rooms_data:
+                    for i, s in enumerate(r.get('seats', [])):
+                        if s and s.get('username') == target_name:
+                            await db.rooms.update_one({"id": r['id']}, {"$set": {f"seats.{i}.is_muted": True}})
+                action_result = f"{target_name} muteado"
+            elif action == 'kick_user':
+                target_name = params.get('username')
+                for r in rooms_data:
+                    seats = r.get('seats', [])
+                    changed = False
+                    for i, s in enumerate(seats):
+                        if s and s.get('username') == target_name:
+                            seats[i] = None
+                            changed = True
+                    if changed:
+                        ac = sum(1 for s in seats if s)
+                        await db.rooms.update_one({"id": r['id']}, {"$set": {"seats": seats, "active_users": ac}})
+                action_result = f"{target_name} sacado de sala"
     except Exception as e:
-        action_result = None
+        action_result = f"Error: {str(e)}"
     
     # Save to chat history
     await db.bot_history.insert_one({
