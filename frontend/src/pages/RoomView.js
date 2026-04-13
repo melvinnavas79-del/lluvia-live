@@ -157,13 +157,13 @@ const RoomView = ({ roomId, onBack }) => {
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-900 via-purple-900 to-blue-900">
+    <div className="min-h-screen bg-gradient-to-b from-blue-900 via-purple-900 to-blue-900 pb-28">
       {entryAnim && <EntryAnimation animation={entryAnim.animation} username={entryAnim.username} onComplete={() => setEntryAnim(null)} />}
 
       {/* Header */}
       <div className="p-3">
         <div className="flex items-center justify-between bg-white/10 backdrop-blur border border-white/20 rounded-2xl p-3">
-          <button onClick={() => { leaveAgora(); onBack(); }} className="bg-pink-500 text-white px-4 py-2 rounded-full text-sm font-bold">← Volver</button>
+          <button data-testid="room-back-btn" onClick={() => { leaveAgora(); onBack(); }} className="bg-pink-500 text-white px-4 py-2 rounded-full text-sm font-bold">← Volver</button>
           <div className="text-center">
             <h2 className="text-lg font-bold text-white">🎤 {room.name}</h2>
             <p className="text-white/50 text-xs">Lluvia Live</p>
@@ -177,34 +177,6 @@ const RoomView = ({ roomId, onBack }) => {
         </div>
       </div>
 
-      {/* AUDIO CONTROLS - ALWAYS VISIBLE WHEN SEATED */}
-      {mySeat !== null && (
-        <div className="px-3 mb-2">
-          <div className="bg-black/40 backdrop-blur rounded-2xl p-3 flex items-center justify-center gap-4">
-            <button onClick={toggleMute}
-              className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl shadow-lg ${
-                isMuted ? 'bg-red-500 shadow-red-500/40' : 'bg-green-500 shadow-green-500/40'
-              }`}>
-              {isMuted ? '🔇' : '🎤'}
-            </button>
-            <button onClick={toggleDeafen}
-              className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl shadow-lg ${
-                isDeafened ? 'bg-orange-500 shadow-orange-500/40' : 'bg-blue-500 shadow-blue-500/40'
-              }`}>
-              {isDeafened ? '🔕' : '🔊'}
-            </button>
-            <button onClick={leaveSeat}
-              className="w-14 h-14 rounded-full bg-red-600 shadow-lg shadow-red-600/40 flex items-center justify-center text-2xl">
-              🚪
-            </button>
-            <div className="text-white/60 text-xs text-center ml-2">
-              <div>{isMuted ? 'Mute' : 'Mic ON'}</div>
-              <div>{isDeafened ? 'Sala mute' : 'Escuchando'}</div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Seats */}
       <div className="px-3 mb-2">
         <div className="bg-white/5 backdrop-blur border border-white/10 rounded-2xl p-3">
@@ -212,6 +184,7 @@ const RoomView = ({ roomId, onBack }) => {
             {room.seats.map((seat, index) => (
               <div key={index} className="flex justify-center">
                 <button
+                  data-testid={`seat-btn-${index}`}
                   onClick={() => seat ? (seat.user_id === user.id ? leaveSeat() : null) : joinSeat(index)}
                   disabled={seat && seat.user_id !== user.id}
                   className={`relative w-full h-28 rounded-xl border-2 transition-all ${
@@ -273,11 +246,40 @@ const RoomView = ({ roomId, onBack }) => {
             <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendChat()}
               placeholder="Mensaje..."
+              data-testid="chat-input"
               className="flex-1 bg-white/10 text-white placeholder-white/30 border border-white/20 rounded-full px-3 py-2 text-xs outline-none" />
-            <button onClick={sendChat} className="bg-pink-500 text-white px-3 py-2 rounded-full text-xs font-bold">Enviar</button>
+            <button data-testid="chat-send-btn" onClick={sendChat} className="bg-pink-500 text-white px-3 py-2 rounded-full text-xs font-bold">Enviar</button>
           </div>
         </div>
       </div>
+
+      {/* AUDIO CONTROLS - FIXED AT BOTTOM */}
+      {mySeat !== null && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 px-3 pb-3 pt-2" style={{background: 'linear-gradient(transparent, rgba(0,0,0,0.8) 30%)'}}>
+          <div className="bg-black/70 backdrop-blur-xl rounded-2xl p-3 flex items-center justify-center gap-4 border border-white/10 shadow-2xl">
+            <button data-testid="toggle-mute-btn" onClick={toggleMute}
+              className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl shadow-lg active:scale-95 transition-transform ${
+                isMuted ? 'bg-red-500 shadow-red-500/40' : 'bg-green-500 shadow-green-500/40'
+              }`}>
+              {isMuted ? '🔇' : '🎤'}
+            </button>
+            <button data-testid="toggle-deafen-btn" onClick={toggleDeafen}
+              className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl shadow-lg active:scale-95 transition-transform ${
+                isDeafened ? 'bg-orange-500 shadow-orange-500/40' : 'bg-blue-500 shadow-blue-500/40'
+              }`}>
+              {isDeafened ? '🔕' : '🔊'}
+            </button>
+            <button data-testid="leave-seat-btn" onClick={leaveSeat}
+              className="w-14 h-14 rounded-full bg-red-600 shadow-lg shadow-red-600/40 flex items-center justify-center text-2xl active:scale-95 transition-transform">
+              🚪
+            </button>
+            <div className="text-white/60 text-xs text-center ml-2">
+              <div>{isMuted ? 'Mute' : 'Mic ON'}</div>
+              <div>{isDeafened ? 'Sala mute' : 'Escuchando'}</div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

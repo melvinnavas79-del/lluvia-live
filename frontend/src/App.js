@@ -12,6 +12,8 @@ import ControlPanel from './pages/ControlPanel';
 import ReelsView from './pages/ReelsView';
 import PhotosView from './pages/PhotosView';
 import StorePage from './pages/StorePage';
+import ClanesView from './pages/ClanesView';
+import ParejasView from './pages/ParejasView';
 
 function AppContent() {
   const { isAuthenticated, login } = useUser();
@@ -68,6 +70,14 @@ function AppContent() {
 
   if (currentView === 'store') {
     return <StorePage onBack={() => setCurrentView('dashboard')} />;
+  }
+
+  if (currentView === 'clanes') {
+    return <ClanesView onBack={() => setCurrentView('dashboard')} />;
+  }
+
+  if (currentView === 'parejas') {
+    return <ParejasView onBack={() => setCurrentView('dashboard')} />;
   }
 
   return <Dashboard onNavigate={handleNavigate} />;

@@ -121,7 +121,7 @@ const Dashboard = ({ onNavigate }) => {
         </div>
 
         {/* Pareja */}
-        <div className="bg-gradient-to-b from-pink-100 to-pink-50 rounded-2xl p-4 text-center">
+        <button data-testid="nav-parejas-btn" onClick={() => onNavigate('parejas')} className="bg-gradient-to-b from-pink-100 to-pink-50 rounded-2xl p-4 text-center hover:scale-105 transition-transform cursor-pointer">
           <h4 className="font-bold text-gray-800 mb-2">Pareja</h4>
           <div className="flex justify-center items-center gap-1 mb-2">
             <div className="w-10 h-10 rounded-full bg-blue-300 border-2 border-yellow-400 flex items-center justify-center text-sm">👤</div>
@@ -129,10 +129,10 @@ const Dashboard = ({ onNavigate }) => {
             <div className="w-10 h-10 rounded-full bg-pink-300 border-2 border-yellow-400 flex items-center justify-center text-sm">👩</div>
           </div>
           <div className="text-sm font-bold text-pink-600">🔥 PAREJA 🔥</div>
-        </div>
+        </button>
 
         {/* Clan */}
-        <div className="bg-gradient-to-b from-blue-100 to-blue-50 rounded-2xl p-4 text-center">
+        <button data-testid="nav-clanes-btn" onClick={() => onNavigate('clanes')} className="bg-gradient-to-b from-blue-100 to-blue-50 rounded-2xl p-4 text-center hover:scale-105 transition-transform cursor-pointer">
           <h4 className="font-bold text-gray-800 mb-2">Clan</h4>
           <div className="flex justify-center -space-x-2 mb-2">
             <div className="w-10 h-10 rounded-full bg-yellow-300 border-2 border-yellow-400 flex items-center justify-center text-sm">🦁</div>
@@ -140,7 +140,7 @@ const Dashboard = ({ onNavigate }) => {
             <div className="w-10 h-10 rounded-full bg-pink-300 border-2 border-yellow-400 flex items-center justify-center text-sm">👩</div>
           </div>
           <div className="text-sm font-bold text-gray-800">🔥 TOP 2 🔥</div>
-        </div>
+        </button>
       </div>
 
       {/* Popular / Nuevo Sub-tabs */}
