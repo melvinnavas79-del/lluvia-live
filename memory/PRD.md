@@ -1,50 +1,53 @@
 # Lluvia Live - PRD
 
-## Problem Statement
-Construir app "Lluvia Live" - plataforma de streaming de audio en vivo social
+## Problema Original
+Aplicación social de audio streaming tipo "Lluvia Live" con salas de audio en vivo (Agora.io), gamificación, economía virtual, juegos y panel de control administrativo.
 
-## Tech Stack
-- Backend: FastAPI + MongoDB
-- Frontend: React 19 + Tailwind CSS
+## Requisitos del Producto
+- Audio Streaming Rooms via Agora.io (Mic/Speaker, auto-mute, sin duplicar asientos)
+- Gamificación: Entradas VIP (Dragón, León, Tigre, etc.), Aristocracia, CP (Parejas), Clanes
+- Economía: Coins, Diamonds, Stripe Payments, premios automáticos
+- 6 Juegos: Ludo (pendiente webview), Ruleta, Dados, PPT, Carta Mayor, Trivia, Slots 777
+- Multimedia: Upload Reels y Fotos
+- Panel de Control: Editar precios, expandir micros (9 a 24), gestionar usuarios
+- AI Admin Bot: Ejecutar acciones via lenguaje natural (Gemini)
+- PWA, Android build script, iOS project setup, VPS install script
+- Marca: "Lluvia Live" con ☔
 
-## What's Been Implemented (April 12, 2026)
+## Arquitectura
+- Frontend: React.js + TailwindCSS + Shadcn/UI
+- Backend: FastAPI + Motor (Async MongoDB)
+- DB: MongoDB
+- Audio: Agora.io Web SDK
+- AI: emergentintegrations (Gemini)
+- Pagos: Stripe
 
-### Core Features
-- Login/Registro de usuarios
-- Dashboard con tabs (Salas, Juegos, Rankings, Clanes)
-- Salas de audio con 9 asientos
-- Sistema de niveles (1-9: Bronce → Supremo)
-- Sistema de monedas y diamantes
-- Perfil de usuario completo
+## Lo Implementado
+- [x] Full app frontend/backend desde cero
+- [x] Agora.io Audio WebRTC
+- [x] File Uploads (Reels y Photos)
+- [x] Gamificación & Entradas VIP (Lottie)
+- [x] Slots 777 & 5 mini-juegos
+- [x] Panel de Control & Tienda Stripe
+- [x] AI Admin Bot (Gemini)
+- [x] PWA, iOS scaffold, Android build, VPS script
+- [x] Clanes - Crear, unirse, salir, ranking (Frontend + Backend)
+- [x] Parejas CP - Crear, ranking, nivel (Frontend + Backend)
+- [x] Controles de audio movidos al fondo de la sala (fixed bottom)
+- [x] Tarjetas de Clan y Pareja clickeables en Dashboard
 
-### Games (5 juegos)
-- Ruleta de la Suerte (x10 jackpot)
-- Dados
-- Piedra, Papel, Tijera
-- Trivia (10 preguntas)
-- Carta Mayor
+## Backlog (P0/P1/P2)
+- P0: Integrar juego Ludo como WebView/iframe
+- P1: Push código a GitHub del usuario
+- P2: Refactorizar server.py monolítico en módulos separados
 
-### Admin & Social
-- Panel de Administración (clave: lluvia_admin_2024)
-- Modo Fantasma (solo admin)
-- Premio Bebé Robot (15M al llegar a 50M siendo dueño de sala)
-- Reels (crear, ver, likes)
-- Galería de Fotos (crear, ver, likes, modal)
+## Credenciales
+- Usuario: Melvin_Live / test123
 
-## Backlog (P1)
-- WebRTC audio real en salas
-- Sistema de Clanes completo
-- Rankings completos
-- Sistema de regalos con animaciones
-- Sistema de parejas (CP)
-- VIP/SVIP/Aristocracia completo
-- Billetera Firebase
-- Eventos globales
-- Entradas animadas
-- Agentes de recarga
-
-## Backlog (P2)
-- Subir videos reales en Reels
-- Chat en salas
-- Notificaciones push
-- Modo oscuro/claro
+## Archivos Clave
+- `/app/backend/server.py` - Backend monolítico
+- `/app/frontend/src/pages/RoomView.js` - Sala con audio controls al fondo
+- `/app/frontend/src/pages/ClanesView.js` - Vista de Clanes
+- `/app/frontend/src/pages/ParejasView.js` - Vista de Parejas
+- `/app/frontend/src/pages/Dashboard.js` - Dashboard principal
+- `/app/frontend/src/App.js` - Navegación
