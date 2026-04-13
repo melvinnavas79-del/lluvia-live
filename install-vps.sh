@@ -1,120 +1,133 @@
 #!/bin/bash
 # ============================================
-# LLUVIA LIVE - INSTALACIÓN AUTOMÁTICA VPS
+# LLUVIA LIVE - INSTALACION VPS
 # ============================================
-# Uso: Pega este script completo en Termius
-# Sistema: Ubuntu 20.04/22.04
+# Sistema: Ubuntu 20.04 / 22.04 / 24.04
+# Uso: sudo bash install-vps.sh
 # ============================================
 
-echo "☔ ============================================"
-echo "☔  INSTALANDO LLUVIA LIVE"
-echo "☔  Esto toma aprox 5 minutos..."
-echo "☔ ============================================"
+set -e
+
+echo ""
+echo "============================================"
+echo "  INSTALANDO LLUVIA LIVE"
+echo "  Esto toma aprox 5-10 minutos..."
+echo "============================================"
+echo ""
 
 # 1. ACTUALIZAR SISTEMA
-echo "📦 Actualizando sistema..."
+echo "[1/10] Actualizando sistema..."
 apt update -y && apt upgrade -y
 
-# 2. INSTALAR DEPENDENCIAS
-echo "📦 Instalando dependencias..."
-apt install -y curl wget git nginx python3 python3-pip python3-venv nodejs npm certbot python3-certbot-nginx
+# 2. INSTALAR DEPENDENCIAS BASE
+echo "[2/10] Instalando dependencias..."
+apt install -y curl wget git nginx python3 python3-pip python3-venv certbot python3-certbot-nginx ufw
+
+# Instalar Node.js 18+
+curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+apt install -y nodejs
+npm install -g yarn pm2
 
 # 3. INSTALAR MONGODB
-echo "🗄️ Instalando MongoDB..."
-curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
-echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] http://repo.mongodb.org/apt/debian bookworm/mongodb-org/7.0 main" | tee /etc/apt/sources.list.d/mongodb-org-7.0.list
-apt update -y
-apt install -y mongodb-org || {
-    echo "⚠️ MongoDB repo failed, trying alternative..."
-    apt install -y mongodb
-}
-systemctl start mongod || systemctl start mongodb
-systemctl enable mongod || systemctl enable mongodb
-echo "✅ MongoDB instalado"
+echo "[3/10] Instalando MongoDB..."
+if ! command -v mongod &> /dev/null; then
+    curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc | gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg
+    echo "deb [ signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg ] http://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" | tee /etc/apt/sources.list.d/mongodb-org-7.0.list
+    apt update -y
+    apt install -y mongodb-org || apt install -y mongodb
+fi
+systemctl start mongod 2>/dev/null || systemctl start mongodb 2>/dev/null
+systemctl enable mongod 2>/dev/null || systemctl enable mongodb 2>/dev/null
+echo "MongoDB OK"
 
-# 4. INSTALAR PM2
-echo "📦 Instalando PM2..."
-npm install -g pm2 n
-n stable
-hash -r
-
-# 5. CLONAR PROYECTO
-echo "📥 Clonando Lluvia Live desde GitHub..."
+# 4. CLONAR PROYECTO
+echo "[4/10] Clonando Lluvia Live..."
 cd /root
 rm -rf lluvia-live
 git clone https://github.com/melvinnavas79-del/lluvia-live.git
 cd lluvia-live
 
-# 6. CONFIGURAR BACKEND
-echo "🔧 Configurando Backend..."
+# 5. CONFIGURAR BACKEND
+echo "[5/10] Configurando Backend..."
 cd /root/lluvia-live/backend
 python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
-pip install fastapi uvicorn motor pymongo python-dotenv bcrypt pydantic python-multipart agora-token-builder python-jose requests
 
-# Crear .env del backend
-cat > /root/lluvia-live/backend/.env << 'ENVEOF'
-MONGO_URL=mongodb://localhost:27017
-DB_NAME=lluvia_live_db
-CORS_ORIGINS=*
-AGORA_APP_ID=Eccc145929e240a2b26f696a3a2ce542
-AGORA_APP_CERTIFICATE=7cb80b931a4143f2aa4ef0eea6552ffe
-ENVEOF
+# Instalar dependencias del backend
+pip install fastapi uvicorn motor pymongo python-dotenv bcrypt pydantic python-multipart python-jose requests agora-token-builder
+pip install emergentintegrations --extra-index-url https://d33sy5i8bnduwe.cloudfront.net/simple/
 
 # Crear carpeta uploads
 mkdir -p /root/lluvia-live/backend/uploads
-chmod 777 /root/lluvia-live/backend/uploads
-
-echo "✅ Backend configurado"
-
-# 7. CONFIGURAR FRONTEND
-echo "🔧 Configurando Frontend..."
-cd /root/lluvia-live/frontend
+chmod 755 /root/lluvia-live/backend/uploads
 
 # Obtener IP del servidor
 SERVER_IP=$(curl -s ifconfig.me)
 
-# Crear .env del frontend
-cat > /root/lluvia-live/frontend/.env << ENVEOF
-REACT_APP_BACKEND_URL=http://${SERVER_IP}:8001
+# CONFIGURAR .env del backend
+# IMPORTANTE: Edita este archivo con tus claves reales
+cat > /root/lluvia-live/backend/.env << 'ENVEOF'
+MONGO_URL=mongodb://localhost:27017
+DB_NAME=lluvia_live_db
+CORS_ORIGINS=*
+AGORA_APP_ID=eccc145929e240a2b26f696a3a2ce542
+AGORA_APP_CERTIFICATE=7cb80b931a4143f2aa4ef0eea6552ffe
+STRIPE_API_KEY=TU_STRIPE_KEY_AQUI
+EMERGENT_LLM_KEY=TU_EMERGENT_KEY_AQUI
 ENVEOF
 
-npm install --legacy-peer-deps
-npm run build
+echo "Backend OK"
 
-echo "✅ Frontend compilado"
+# 6. CONFIGURAR FRONTEND
+echo "[6/10] Configurando Frontend..."
+cd /root/lluvia-live/frontend
 
-# 8. CONFIGURAR NGINX
-echo "🌐 Configurando Nginx..."
-cat > /etc/nginx/sites-available/lluvia-live << NGINXEOF
+# .env del frontend - usar dominio o IP
+cat > /root/lluvia-live/frontend/.env << ENVEOF
+REACT_APP_BACKEND_URL=http://${SERVER_IP}
+ENVEOF
+
+yarn install --legacy-peer-deps 2>/dev/null || npm install --legacy-peer-deps
+yarn build 2>/dev/null || npm run build
+
+echo "Frontend OK"
+
+# 7. CONFIGURAR NGINX
+echo "[7/10] Configurando Nginx..."
+cat > /etc/nginx/sites-available/lluvia-live << 'NGINXEOF'
 server {
     listen 80;
-    server_name ${SERVER_IP};
+    server_name _;
 
-    # Frontend
+    # Frontend (React build)
     location / {
         root /root/lluvia-live/frontend/build;
         index index.html;
-        try_files \$uri \$uri/ /index.html;
+        try_files $uri $uri/ /index.html;
     }
 
     # Backend API
     location /api {
         proxy_pass http://127.0.0.1:8001;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_cache_bypass \$http_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_cache_bypass $http_upgrade;
         client_max_body_size 100M;
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
     }
 
-    # Uploaded files
+    # Archivos subidos
     location /api/uploads {
         alias /root/lluvia-live/backend/uploads;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
     }
 }
 NGINXEOF
@@ -124,12 +137,10 @@ ln -sf /etc/nginx/sites-available/lluvia-live /etc/nginx/sites-enabled/
 nginx -t && systemctl restart nginx
 systemctl enable nginx
 
-echo "✅ Nginx configurado"
+echo "Nginx OK"
 
-# 9. CONFIGURAR PM2 (BACKEND 24/7)
-echo "🔄 Configurando PM2 para 24/7..."
-cd /root/lluvia-live/backend
-
+# 8. CONFIGURAR PM2
+echo "[8/10] Configurando PM2 (backend 24/7)..."
 cat > /root/lluvia-live/ecosystem.config.js << 'PM2EOF'
 module.exports = {
   apps: [{
@@ -140,55 +151,67 @@ module.exports = {
     autorestart: true,
     watch: false,
     max_memory_restart: '500M',
-    env: {
-      MONGO_URL: 'mongodb://localhost:27017',
-      DB_NAME: 'lluvia_live_db',
-      CORS_ORIGINS: '*',
-      AGORA_APP_ID: 'Eccc145929e240a2b26f696a3a2ce542',
-      AGORA_APP_CERTIFICATE: '7cb80b931a4143f2aa4ef0eea6552ffe'
-    }
+    env_file: '/root/lluvia-live/backend/.env'
   }]
 }
 PM2EOF
 
-pm2 start /root/lluvia-live/ecosystem.config.js
+cd /root/lluvia-live
+pm2 delete lluvia-backend 2>/dev/null || true
+pm2 start ecosystem.config.js
 pm2 save
 pm2 startup
 
-echo "✅ PM2 configurado - App 24/7"
+echo "PM2 OK"
 
-# 10. FIREWALL
-echo "🔒 Configurando Firewall..."
+# 9. FIREWALL
+echo "[9/10] Configurando Firewall..."
 ufw allow 22
 ufw allow 80
 ufw allow 443
-ufw allow 8001
 ufw --force enable
 
-echo "✅ Firewall configurado"
+echo "Firewall OK"
 
-# 11. VERIFICACIÓN FINAL
+# 10. CREAR USUARIO ADMIN
+echo "[10/10] Verificando..."
+sleep 3
+
 echo ""
-echo "☔ ============================================"
-echo "☔  LLUVIA LIVE - INSTALACIÓN COMPLETADA"
-echo "☔ ============================================"
+echo "============================================"
+echo "  LLUVIA LIVE - INSTALACION COMPLETADA"
+echo "============================================"
 echo ""
-echo "🌐 Tu app está en: http://${SERVER_IP}"
+echo "  Tu app esta en: http://${SERVER_IP}"
 echo ""
-echo "📋 Servicios:"
-echo "   ✅ MongoDB: $(systemctl is-active mongod || systemctl is-active mongodb)"
-echo "   ✅ Nginx: $(systemctl is-active nginx)"
-echo "   ✅ Backend: PM2 (lluvia-backend)"
+echo "  Servicios:"
+echo "    MongoDB: $(systemctl is-active mongod 2>/dev/null || systemctl is-active mongodb 2>/dev/null)"
+echo "    Nginx:   $(systemctl is-active nginx)"
+echo "    Backend: $(pm2 list | grep lluvia-backend | awk '{print $12}' || echo 'verificar')"
 echo ""
-echo "📋 Comandos útiles:"
-echo "   pm2 status          - Ver estado"
-echo "   pm2 logs            - Ver logs"
-echo "   pm2 restart all     - Reiniciar"
+echo "  IMPORTANTE - EDITA ESTAS CLAVES:"
+echo "    nano /root/lluvia-live/backend/.env"
+echo "    - STRIPE_API_KEY"
+echo "    - EMERGENT_LLM_KEY"
+echo "    Despues: pm2 restart lluvia-backend"
 echo ""
-echo "🔒 SEGURIDAD:"
-echo "   ¡CAMBIA TU CONTRASEÑA AHORA!"
-echo "   Ejecuta: passwd root"
+echo "  PARA AGREGAR DOMINIO + HTTPS:"
+echo "    1. Apunta tu dominio a IP: ${SERVER_IP}"
+echo "    2. Edita: nano /etc/nginx/sites-available/lluvia-live"
+echo "       Cambia 'server_name _' por 'server_name tudominio.com'"
+echo "    3. sudo certbot --nginx -d tudominio.com"
+echo "    4. Edita frontend .env:"
+echo "       nano /root/lluvia-live/frontend/.env"
+echo "       REACT_APP_BACKEND_URL=https://tudominio.com"
+echo "    5. cd /root/lluvia-live/frontend && yarn build"
+echo "    6. systemctl restart nginx"
 echo ""
-echo "☔ ¡LLUVIA LIVE ESTÁ EN LÍNEA! ☔"
-echo "☔ Abre: http://${SERVER_IP}"
+echo "  COMANDOS UTILES:"
+echo "    pm2 status           - Ver estado"
+echo "    pm2 logs             - Ver logs en vivo"
+echo "    pm2 restart all      - Reiniciar backend"
+echo "    systemctl restart nginx - Reiniciar nginx"
+echo ""
+echo "  LLUVIA LIVE ESTA EN LINEA"
+echo "  Abre: http://${SERVER_IP}"
 echo "============================================"
