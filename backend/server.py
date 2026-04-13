@@ -1539,6 +1539,65 @@ async def upload_file(file: UploadFile = File(...)):
     file_url = f"/api/uploads/{filename}"
     return {"success": True, "url": file_url, "filename": filename}
 
+@api_router.post("/users/{user_id}/avatar")
+async def upload_avatar(user_id: str, file: UploadFile = File(...)):
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    ext = file.filename.split('.')[-1].lower() if '.' in file.filename else 'png'
+    allowed_img = ['jpg', 'jpeg', 'png', 'gif', 'webp']
+    if ext not in allowed_img:
+        raise HTTPException(status_code=400, detail="Solo imagenes: jpg, png, gif, webp")
+    
+    file_id = str(uuid.uuid4())
+    filename = f"avatar_{file_id}.{ext}"
+    filepath = UPLOAD_DIR / filename
+    
+    content = await file.read()
+    with open(filepath, "wb") as f:
+        f.write(content)
+    
+    avatar_url = f"/api/uploads/{filename}"
+    await db.users.update_one({"id": user_id}, {"$set": {"avatar": avatar_url}})
+    
+    updated = await db.users.find_one({"id": user_id})
+    return {"success": True, "avatar": avatar_url, "user": serialize_user(updated)}
+
+# ==================== FLASH FAME ====================
+
+@api_router.get("/flash-fame/all")
+async def get_all_flash_fame():
+    """Get Flash Fame data for individual, clan weekly, clan monthly, and top CP"""
+    result = {}
+    
+    # Top 1 Individual (weekly champion)
+    fame = await db.system.find_one({"key": "flash_fame"})
+    if fame:
+        fame.pop('_id', None)
+        result["individual"] = fame
+    else:
+        top_user = await db.users.find_one({}, sort=[("coins", -1)])
+        if top_user:
+            result["individual"] = {"username": top_user['username'], "avatar": top_user['avatar'], "coins": top_user.get('coins', 0)}
+    
+    # Top Clan Weekly
+    top_clan_weekly = await db.clanes.find_one({}, sort=[("weekly_coins", -1)])
+    if top_clan_weekly:
+        result["clan_semanal"] = {"name": top_clan_weekly['name'], "owner_name": top_clan_weekly.get('owner_name', ''), "members": len(top_clan_weekly.get('members', [])), "weekly_coins": top_clan_weekly.get('weekly_coins', 0)}
+    
+    # Top Clan Monthly
+    top_clan_monthly = await db.clanes.find_one({}, sort=[("monthly_coins", -1)])
+    if top_clan_monthly:
+        result["clan_mensual"] = {"name": top_clan_monthly['name'], "owner_name": top_clan_monthly.get('owner_name', ''), "members": len(top_clan_monthly.get('members', [])), "monthly_coins": top_clan_monthly.get('monthly_coins', 0)}
+    
+    # Top CP (Pareja)
+    top_cp = await db.parejas.find_one({}, sort=[("total_coins", -1)])
+    if top_cp:
+        result["pareja"] = {"user1_name": top_cp.get('user1_name', ''), "user2_name": top_cp.get('user2_name', ''), "level": top_cp.get('level', 1), "total_coins": top_cp.get('total_coins', 0), "ring": top_cp.get('ring', None)}
+    
+    return result
+
 # ==================== AGORA TOKEN ====================
 
 @api_router.post("/agora/token")
