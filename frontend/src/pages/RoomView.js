@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import AgoraRTC from 'agora-rtc-sdk-ng';
 import { useUser } from '../contexts/UserContext';
+import { EntryAnimation, ProfileFrame, MicRing } from '../components/Animations';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -14,6 +15,7 @@ const RoomView = ({ roomId, onBack }) => {
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState('');
   const [agoraJoined, setAgoraJoined] = useState(false);
+  const [entryAnim, setEntryAnim] = useState(null);
 
   const clientRef = useRef(null);
   const localTrackRef = useRef(null);
@@ -79,6 +81,14 @@ const RoomView = ({ roomId, onBack }) => {
       // Send welcome
       await axios.post(`${API}/rooms/${roomId}/welcome?user_id=${user.id}`);
       loadChat();
+      
+      // Show entry animation
+      try {
+        const animRes = await axios.get(`${API}/users/${user.id}/entry-animation`);
+        if (animRes.data.special) {
+          setEntryAnim({ animation: animRes.data.animation, username: user.username });
+        }
+      } catch (e) { console.log(e); }
     } catch (err) {
       console.error('Agora join error:', err);
       alert('Error conectando audio. Verifica permisos del micrófono.');
@@ -182,6 +192,14 @@ const RoomView = ({ roomId, onBack }) => {
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-blue-900 via-purple-900 to-blue-900 p-4 pb-24">
+      {/* Entry Animation */}
+      {entryAnim && (
+        <EntryAnimation
+          animation={entryAnim.animation}
+          username={entryAnim.username}
+          onComplete={() => setEntryAnim(null)}
+        />
+      )}
       {/* Header */}
       <div className="max-w-4xl mx-auto mb-4">
         <div className="flex items-center justify-between bg-white/10 backdrop-blur border border-white/20 rounded-2xl p-3">
@@ -222,7 +240,9 @@ const RoomView = ({ roomId, onBack }) => {
                   <div className="flex flex-col items-center justify-center h-full p-1">
                     {seat ? (
                       <>
-                        <img src={seat.avatar} alt="" className="w-12 h-12 rounded-full mb-1 border-2 border-white/50" />
+                        <ProfileFrame aristocracy={seat.aristocracy || 0}>
+                          <img src={seat.avatar} alt="" className="w-12 h-12 rounded-full" />
+                        </ProfileFrame>
                         <span className="text-white font-medium text-xs truncate w-full text-center">{seat.username}</span>
                         <span className="text-yellow-400 text-xs">Lv.{seat.level}</span>
                         {seat.user_id === user.id && (
