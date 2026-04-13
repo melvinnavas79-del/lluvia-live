@@ -52,7 +52,7 @@ const Dashboard = ({ onNavigate }) => {
           { icon: '🏠', label: 'My Room', action: createRoom },
           { icon: '💬', label: 'Quick Join', action: () => { if (rooms.length > 0) onNavigate('room', rooms[0].id); } },
           { icon: '🎬', label: 'Reels', action: () => onNavigate('reels') },
-          { icon: '📸', label: 'Galería', action: () => onNavigate('photos') }
+          { icon: '💰', label: 'Tienda', action: () => onNavigate('store') }
         ].map((item, i) => (
           <button
             key={i}

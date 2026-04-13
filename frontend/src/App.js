@@ -11,6 +11,7 @@ import AdminPanel from './pages/AdminPanel';
 import ControlPanel from './pages/ControlPanel';
 import ReelsView from './pages/ReelsView';
 import PhotosView from './pages/PhotosView';
+import StorePage from './pages/StorePage';
 
 function AppContent() {
   const { isAuthenticated, login } = useUser();
@@ -63,6 +64,10 @@ function AppContent() {
 
   if (currentView === 'photos') {
     return <PhotosView onBack={() => setCurrentView('dashboard')} />;
+  }
+
+  if (currentView === 'store') {
+    return <StorePage onBack={() => setCurrentView('dashboard')} />;
   }
 
   return <Dashboard onNavigate={handleNavigate} />;
