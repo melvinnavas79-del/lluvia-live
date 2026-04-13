@@ -20,7 +20,8 @@ const RoomView = ({ roomId, onBack }) => {
   const clientRef = useRef(null);
   const localTrackRef = useRef(null);
   const autoMuteTimer = useRef(null);
-  const chatEndRef = useRef(null);
+  const chatContainerRef = useRef(null);
+  const prevMsgCount = useRef(0);
 
   useEffect(() => {
     loadRoom();
@@ -30,8 +31,12 @@ const RoomView = ({ roomId, onBack }) => {
     return () => { clearInterval(r); clearInterval(c); leaveAgora(); };
   }, [roomId]);
 
+  // Only auto-scroll chat container (not the page) when new messages arrive
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (chatMessages.length > prevMsgCount.current && chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
+    prevMsgCount.current = chatMessages.length;
   }, [chatMessages]);
 
   const loadRoom = async () => {
@@ -75,7 +80,6 @@ const RoomView = ({ roomId, onBack }) => {
       setAudioStatus('on');
       setIsMuted(false);
 
-      // Welcome + Entry animation
       await axios.post(`${API}/rooms/${roomId}/welcome?user_id=${user.id}`);
       loadChat();
       try {
@@ -151,81 +155,80 @@ const RoomView = ({ roomId, onBack }) => {
   };
 
   if (!room) return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-900 to-purple-900 flex items-center justify-center">
+    <div className="h-screen bg-gradient-to-b from-blue-900 to-purple-900 flex items-center justify-center">
       <div className="text-white">Cargando...</div>
     </div>
   );
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-900 via-purple-900 to-blue-900 pb-28">
+    <div className="h-screen flex flex-col bg-gradient-to-b from-blue-900 via-purple-900 to-blue-900 overflow-hidden">
       {entryAnim && <EntryAnimation animation={entryAnim.animation} username={entryAnim.username} onComplete={() => setEntryAnim(null)} />}
 
-      {/* Header */}
-      <div className="p-3">
+      {/* Header - fixed height */}
+      <div className="flex-shrink-0 p-3">
         <div className="flex items-center justify-between bg-white/10 backdrop-blur border border-white/20 rounded-2xl p-3">
           <button data-testid="room-back-btn" onClick={() => { leaveAgora(); onBack(); }} className="bg-pink-500 text-white px-4 py-2 rounded-full text-sm font-bold">← Volver</button>
           <div className="text-center">
-            <h2 className="text-lg font-bold text-white">🎤 {room.name}</h2>
+            <h2 className="text-base font-bold text-white">🎤 {room.name}</h2>
             <p className="text-white/50 text-xs">Lluvia Live</p>
           </div>
           <div className="text-xs text-right">
             <div className={audioStatus === 'on' ? 'text-green-400' : audioStatus === 'connecting' ? 'text-yellow-400' : 'text-red-400'}>
-              {audioStatus === 'on' ? '🟢 Audio ON' : audioStatus === 'connecting' ? '🟡 Conectando...' : '🔴 Audio OFF'}
+              {audioStatus === 'on' ? '🟢 ON' : audioStatus === 'connecting' ? '🟡...' : '🔴 OFF'}
             </div>
-            <div className="text-white/50">{room.active_users} online</div>
+            <div className="text-white/50">{room.active_users} 👥</div>
           </div>
         </div>
       </div>
 
-      {/* Seats */}
-      <div className="px-3 mb-2">
-        <div className="bg-white/5 backdrop-blur border border-white/10 rounded-2xl p-3">
-          <div className="grid grid-cols-3 gap-2">
+      {/* Seats - scrollable area */}
+      <div className="flex-shrink-0 px-3 mb-1 overflow-y-auto" style={{maxHeight: '40vh'}}>
+        <div className="bg-white/5 backdrop-blur border border-white/10 rounded-2xl p-2">
+          <div className="grid grid-cols-3 gap-1.5">
             {room.seats.map((seat, index) => (
-              <div key={index} className="flex justify-center">
-                <button
-                  data-testid={`seat-btn-${index}`}
-                  onClick={() => seat ? (seat.user_id === user.id ? leaveSeat() : null) : joinSeat(index)}
-                  disabled={seat && seat.user_id !== user.id}
-                  className={`relative w-full h-28 rounded-xl border-2 transition-all ${
-                    seat
-                      ? seat.user_id === user.id
-                        ? 'bg-green-500/20 border-green-400'
-                        : 'bg-pink-500/20 border-pink-400'
-                      : 'bg-white/5 border-white/20 hover:border-pink-400'
-                  }`}>
-                  <div className="flex flex-col items-center justify-center h-full">
-                    {seat ? (
-                      <>
-                        <ProfileFrame aristocracy={seat.aristocracy || 0}>
-                          <img src={seat.avatar} alt="" className="w-11 h-11 rounded-full" />
-                        </ProfileFrame>
-                        <span className="text-white text-xs font-medium mt-1 truncate w-full text-center px-1">{seat.username}</span>
-                        {seat.user_id === user.id && (
-                          <div className={`absolute top-1 right-1 w-5 h-5 rounded-full flex items-center justify-center text-xs ${isMuted ? 'bg-red-500' : 'bg-green-500'}`}>
-                            {isMuted ? '🔇' : '🎤'}
-                          </div>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <div className="text-2xl">🪑</div>
-                        <span className="text-white/30 text-xs">{index + 1}</span>
-                      </>
-                    )}
-                  </div>
-                </button>
-              </div>
+              <button
+                key={index}
+                data-testid={`seat-btn-${index}`}
+                onClick={() => seat ? (seat.user_id === user.id ? leaveSeat() : null) : joinSeat(index)}
+                disabled={seat && seat.user_id !== user.id}
+                className={`relative w-full h-20 rounded-xl border-2 transition-all ${
+                  seat
+                    ? seat.user_id === user.id
+                      ? 'bg-green-500/20 border-green-400'
+                      : 'bg-pink-500/20 border-pink-400'
+                    : 'bg-white/5 border-white/20 hover:border-pink-400'
+                }`}>
+                <div className="flex flex-col items-center justify-center h-full">
+                  {seat ? (
+                    <>
+                      <ProfileFrame aristocracy={seat.aristocracy || 0}>
+                        <img src={seat.avatar} alt="" className="w-9 h-9 rounded-full" />
+                      </ProfileFrame>
+                      <span className="text-white text-[10px] font-medium mt-0.5 truncate w-full text-center px-1">{seat.username}</span>
+                      {seat.user_id === user.id && (
+                        <div className={`absolute top-0.5 right-0.5 w-4 h-4 rounded-full flex items-center justify-center text-[8px] ${isMuted ? 'bg-red-500' : 'bg-green-500'}`}>
+                          {isMuted ? '🔇' : '🎤'}
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-lg">🪑</div>
+                      <span className="text-white/30 text-[10px]">{index + 1}</span>
+                    </>
+                  )}
+                </div>
+              </button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Chat */}
-      <div className="px-3 pb-4">
-        <div className="bg-white/5 backdrop-blur border border-white/10 rounded-2xl p-3">
-          <h4 className="text-white/70 font-bold text-xs mb-2">💬 Chat</h4>
-          <div className="h-36 overflow-y-auto mb-2 space-y-1">
+      {/* Chat - fills remaining space */}
+      <div className="flex-1 min-h-0 px-3 pb-2">
+        <div className="bg-white/5 backdrop-blur border border-white/10 rounded-2xl p-3 h-full flex flex-col">
+          <h4 className="text-white/70 font-bold text-xs mb-1 flex-shrink-0">💬 Chat</h4>
+          <div ref={chatContainerRef} className="flex-1 min-h-0 overflow-y-auto space-y-1">
             {chatMessages.map(msg => (
               <div key={msg.id} className={msg.type === 'welcome' ? 'text-center' : 'flex items-start gap-1'}>
                 {msg.type === 'welcome' ? (
@@ -240,9 +243,8 @@ const RoomView = ({ roomId, onBack }) => {
                 )}
               </div>
             ))}
-            <div ref={chatEndRef} />
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-shrink-0 mt-1">
             <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendChat()}
               placeholder="Mensaje..."
@@ -255,22 +257,22 @@ const RoomView = ({ roomId, onBack }) => {
 
       {/* AUDIO CONTROLS - FIXED AT BOTTOM */}
       {mySeat !== null && (
-        <div className="fixed bottom-0 left-0 right-0 z-50 px-3 pb-3 pt-2" style={{background: 'linear-gradient(transparent, rgba(0,0,0,0.8) 30%)'}}>
-          <div className="bg-black/70 backdrop-blur-xl rounded-2xl p-3 flex items-center justify-center gap-4 border border-white/10 shadow-2xl">
+        <div className="flex-shrink-0 bg-black/80 backdrop-blur-xl px-3 pb-3 pt-2 border-t border-white/10">
+          <div className="flex items-center justify-center gap-4">
             <button data-testid="toggle-mute-btn" onClick={toggleMute}
-              className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl shadow-lg active:scale-95 transition-transform ${
+              className={`w-12 h-12 rounded-full flex items-center justify-center text-xl shadow-lg active:scale-95 transition-transform ${
                 isMuted ? 'bg-red-500 shadow-red-500/40' : 'bg-green-500 shadow-green-500/40'
               }`}>
               {isMuted ? '🔇' : '🎤'}
             </button>
             <button data-testid="toggle-deafen-btn" onClick={toggleDeafen}
-              className={`w-14 h-14 rounded-full flex items-center justify-center text-2xl shadow-lg active:scale-95 transition-transform ${
+              className={`w-12 h-12 rounded-full flex items-center justify-center text-xl shadow-lg active:scale-95 transition-transform ${
                 isDeafened ? 'bg-orange-500 shadow-orange-500/40' : 'bg-blue-500 shadow-blue-500/40'
               }`}>
               {isDeafened ? '🔕' : '🔊'}
             </button>
             <button data-testid="leave-seat-btn" onClick={leaveSeat}
-              className="w-14 h-14 rounded-full bg-red-600 shadow-lg shadow-red-600/40 flex items-center justify-center text-2xl active:scale-95 transition-transform">
+              className="w-12 h-12 rounded-full bg-red-600 shadow-lg shadow-red-600/40 flex items-center justify-center text-xl active:scale-95 transition-transform">
               🚪
             </button>
             <div className="text-white/60 text-xs text-center ml-2">

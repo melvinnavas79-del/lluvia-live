@@ -14,6 +14,7 @@ import PhotosView from './pages/PhotosView';
 import StorePage from './pages/StorePage';
 import ClanesView from './pages/ClanesView';
 import ParejasView from './pages/ParejasView';
+import NotificationsView from './pages/NotificationsView';
 
 function AppContent() {
   const { isAuthenticated, login } = useUser();
@@ -78,6 +79,10 @@ function AppContent() {
 
   if (currentView === 'parejas') {
     return <ParejasView onBack={() => setCurrentView('dashboard')} />;
+  }
+
+  if (currentView === 'notifications') {
+    return <NotificationsView onBack={() => setCurrentView('dashboard')} onNavigate={handleNavigate} />;
   }
 
   return <Dashboard onNavigate={handleNavigate} />;

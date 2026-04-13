@@ -105,6 +105,14 @@ async def login(credentials: UserLogin):
     if not user or not verify_password(credentials.password, user['password']):
         raise HTTPException(status_code=401, detail="Credenciales inválidas")
     
+    # Notification hook: user connected
+    await create_notification(
+        "alerta_conexion",
+        "Conexion",
+        f"{user['username']} se conecto a Lluvia Live",
+        data={"user_id": user['id'], "username": user['username']}
+    )
+    
     return {"success": True, "user": serialize_user(user)}
 
 @api_router.get("/users/{user_id}")
@@ -697,6 +705,15 @@ async def create_cp(data: CPCreate):
     await db.parejas.insert_one(cp_doc)
     await db.users.update_one({"id": data.user1_id}, {"$set": {"cp_id": cp_id, "cp_partner": u2['username']}})
     await db.users.update_one({"id": data.user2_id}, {"$set": {"cp_id": cp_id, "cp_partner": u1['username']}})
+    
+    # Notification hook: new CP
+    await create_notification(
+        "evento_cp",
+        "Nueva Pareja",
+        f"{u1['username']} y {u2['username']} son pareja oficial!",
+        data={"cp_id": cp_id}
+    )
+    
     cp_doc.pop('_id', None)
     return cp_doc
 
@@ -732,6 +749,14 @@ async def cp_level_up(cp_id: str):
         if ring:
             await db.users.update_one({"id": cp['user1_id']}, {"$push": {"badges": f"💍 Anillo {ring}"}})
             await db.users.update_one({"id": cp['user2_id']}, {"$push": {"badges": f"💍 Anillo {ring}"}})
+    
+    # Notification hook: CP level up
+    await create_notification(
+        "evento_cp",
+        "Pareja Sube de Nivel",
+        f"Pareja {cp.get('user1_name', '')} y {cp.get('user2_name', '')} llego a nivel {new_level}!" + (f" 💍 Anillo {ring}!" if ring else ""),
+        data={"cp_id": cp_id, "new_level": new_level}
+    )
     
     return {"success": True, "new_level": new_level, "bonus": bonus, "ring": ring}
 
@@ -1442,6 +1467,15 @@ async def send_gift(gift: GiftSend):
     
     updated_sender = await db.users.find_one({"id": gift.sender_id})
     
+    # Notification hook: big gifts
+    if gift.gift_type in BIG_GIFTS:
+        await create_notification(
+            "regalo_global",
+            f"{g['emoji']} Regalo Especial",
+            f"{sender['username']} envio {g['name']} {g['emoji']} a {receiver['username']}",
+            data={"gift_type": gift.gift_type, "sender": sender['username'], "receiver": receiver['username']}
+        )
+    
     gift_doc.pop('_id', None)
     return {"success": True, "gift": gift_doc, "new_balance": updated_sender['coins']}
 
@@ -1594,6 +1628,17 @@ async def welcome_message(room_id: str, user_id: str):
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     await db.room_chat.insert_one(welcome_doc)
+    
+    # Notification hook: invitation strategy - notify others that someone is live
+    room = await db.rooms.find_one({"id": room_id})
+    room_name = room.get('name', 'una sala') if room else 'una sala'
+    await create_notification(
+        "invitacion",
+        "Alguien esta en Live!",
+        f"{user['username']} esta en {room_name}, entra a saludar!",
+        data={"room_id": room_id, "user_id": user_id, "username": user['username']}
+    )
+    
     welcome_doc.pop('_id', None)
     return welcome_doc
 
@@ -1928,6 +1973,96 @@ async def get_bot_history(admin_id: str):
     history = await db.bot_history.find({"admin_id": admin_id}).sort("created_at", -1).limit(20).to_list(20)
     history.reverse()
     return [{k: v for k, v in h.items() if k != "_id"} for h in history]
+
+# ==================== NOTIFICATIONS ====================
+
+BIG_GIFTS = ["dragon", "castillo", "lluvia_oro", "mega_crown"]
+
+async def create_notification(category: str, title: str, message: str, target_user_id: str = None, data: dict = None):
+    """Create a notification. target_user_id=None means global notification."""
+    notif_doc = {
+        "id": str(uuid.uuid4()),
+        "category": category,
+        "title": title,
+        "message": message,
+        "target_user_id": target_user_id,
+        "data": data or {},
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.notifications.insert_one(notif_doc)
+    notif_doc.pop('_id', None)
+    return notif_doc
+
+class NotifPreferences(BaseModel):
+    regalos_globales: bool = True
+    eventos_cp: bool = True
+    alertas_conexion: bool = True
+
+@api_router.get("/notifications/{user_id}")
+async def get_notifications(user_id: str, limit: int = 30):
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    prefs = user.get("notif_prefs", {"regalos_globales": True, "eventos_cp": True, "alertas_conexion": True})
+    active_cats = []
+    if prefs.get("regalos_globales", True):
+        active_cats.append("regalo_global")
+    if prefs.get("eventos_cp", True):
+        active_cats.append("evento_cp")
+    if prefs.get("alertas_conexion", True):
+        active_cats.append("alerta_conexion")
+    active_cats.append("invitacion")
+    query = {
+        "category": {"$in": active_cats},
+        "$or": [{"target_user_id": None}, {"target_user_id": user_id}]
+    }
+    notifs = await db.notifications.find(query).sort("created_at", -1).limit(limit).to_list(limit)
+    return [{k: v for k, v in n.items() if k != "_id"} for n in notifs]
+
+@api_router.get("/notifications/{user_id}/unread-count")
+async def get_unread_count(user_id: str):
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        return {"count": 0}
+    last_read = user.get("notif_last_read", "2000-01-01T00:00:00+00:00")
+    prefs = user.get("notif_prefs", {"regalos_globales": True, "eventos_cp": True, "alertas_conexion": True})
+    active_cats = []
+    if prefs.get("regalos_globales", True):
+        active_cats.append("regalo_global")
+    if prefs.get("eventos_cp", True):
+        active_cats.append("evento_cp")
+    if prefs.get("alertas_conexion", True):
+        active_cats.append("alerta_conexion")
+    active_cats.append("invitacion")
+    count = await db.notifications.count_documents({
+        "category": {"$in": active_cats},
+        "$or": [{"target_user_id": None}, {"target_user_id": user_id}],
+        "created_at": {"$gt": last_read}
+    })
+    return {"count": min(count, 99)}
+
+@api_router.post("/notifications/{user_id}/mark-read")
+async def mark_notifications_read(user_id: str):
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"notif_last_read": datetime.now(timezone.utc).isoformat()}}
+    )
+    return {"success": True}
+
+@api_router.get("/notifications/{user_id}/preferences")
+async def get_notif_preferences(user_id: str):
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return user.get("notif_prefs", {"regalos_globales": True, "eventos_cp": True, "alertas_conexion": True})
+
+@api_router.put("/notifications/{user_id}/preferences")
+async def update_notif_preferences(user_id: str, prefs: NotifPreferences):
+    await db.users.update_one(
+        {"id": user_id},
+        {"$set": {"notif_prefs": prefs.dict()}}
+    )
+    return {"success": True, "prefs": prefs.dict()}
 
 # ==================== SETUP ====================
 

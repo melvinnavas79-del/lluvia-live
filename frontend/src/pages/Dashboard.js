@@ -10,10 +10,14 @@ const Dashboard = ({ onNavigate }) => {
   const [rooms, setRooms] = useState([]);
   const [users, setUsers] = useState([]);
   const [subTab, setSubTab] = useState('popular');
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     loadRooms();
     loadUsers();
+    loadUnreadCount();
+    const n = setInterval(loadUnreadCount, 10000);
+    return () => clearInterval(n);
   }, []);
 
   const loadRooms = async () => {
@@ -32,6 +36,13 @@ const Dashboard = ({ onNavigate }) => {
     } catch (err) {
       console.error('Error loading users:', err);
     }
+  };
+
+  const loadUnreadCount = async () => {
+    try {
+      const res = await axios.get(`${API}/notifications/${user.id}/unread-count`);
+      setUnreadCount(res.data.count || 0);
+    } catch (err) { console.error(err); }
   };
 
   const createRoom = async () => {
@@ -271,7 +282,12 @@ const Dashboard = ({ onNavigate }) => {
               )}
             </button>
           ))}
-          <button className="p-2 text-gray-500 text-xl">🔍</button>
+          <button data-testid="nav-notifications-btn" onClick={() => onNavigate('notifications')} className="p-2 text-gray-500 text-xl relative">
+            🔔
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 bg-red-500 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">{unreadCount}</span>
+            )}
+          </button>
         </div>
       </div>
 
