@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import axios from 'axios';
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -11,55 +11,65 @@ const BotFloating = ({ userId, userRole }) => {
   const [listening, setListening] = useState(false);
   const [speaking, setSpeaking] = useState(false);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [voiceUnlocked, setVoiceUnlocked] = useState(false);
   const chatRef = useRef(null);
   const recognitionRef = useRef(null);
+  const pendingSpeechRef = useRef(null);
 
   useEffect(() => {
     if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
   }, [messages]);
 
-  // Initialize Speech Recognition
+  // Init Speech Recognition
   useEffect(() => {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.lang = 'es-ES';
-      recognition.continuous = false;
-      recognition.interimResults = false;
-
-      recognition.onresult = (event) => {
-        const transcript = event.results[0][0].transcript;
-        setInput(transcript);
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SR) {
+      const recog = new SR();
+      recog.lang = 'es-ES';
+      recog.continuous = false;
+      recog.interimResults = false;
+      recog.onresult = (e) => {
+        const text = e.results[0][0].transcript;
         setListening(false);
-        // Auto-send after voice input
-        sendMessageDirect(transcript);
+        handleSend(text);
       };
-
-      recognition.onerror = () => {
-        setListening(false);
-      };
-
-      recognition.onend = () => {
-        setListening(false);
-      };
-
-      recognitionRef.current = recognition;
+      recog.onerror = () => setListening(false);
+      recog.onend = () => setListening(false);
+      recognitionRef.current = recog;
     }
   }, []);
 
-  // Only show for dueño
+  // Load voices
+  useEffect(() => {
+    if (window.speechSynthesis) {
+      window.speechSynthesis.getVoices();
+      window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
+    }
+  }, []);
+
   if (userRole !== 'dueño') return null;
+
+  // Unlock iOS audio with user gesture
+  const unlockVoice = () => {
+    if (voiceUnlocked) return;
+    if (window.speechSynthesis) {
+      const u = new SpeechSynthesisUtterance('');
+      u.volume = 0;
+      window.speechSynthesis.speak(u);
+      setVoiceUnlocked(true);
+    }
+  };
 
   const speakText = (text) => {
     if (!voiceEnabled || !window.speechSynthesis) return;
     window.speechSynthesis.cancel();
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = 'es-ES';
-    utterance.rate = 1.0;
+    utterance.rate = 1.05;
     utterance.pitch = 1.0;
-    // Try to pick a Spanish voice
+    utterance.volume = 1.0;
     const voices = window.speechSynthesis.getVoices();
-    const esVoice = voices.find(v => v.lang.startsWith('es'));
+    const esVoice = voices.find(v => v.lang === 'es-ES' || v.lang === 'es-MX' || v.lang.startsWith('es'));
     if (esVoice) utterance.voice = esVoice;
     utterance.onstart = () => setSpeaking(true);
     utterance.onend = () => setSpeaking(false);
@@ -67,8 +77,8 @@ const BotFloating = ({ userId, userRole }) => {
     window.speechSynthesis.speak(utterance);
   };
 
-  const sendMessageDirect = async (text) => {
-    if (!text.trim() || loading) return;
+  const handleSend = async (text) => {
+    if (!text || !text.trim() || loading) return;
     const msg = text.trim();
     setInput('');
     setMessages(prev => [...prev, { role: 'user', text: msg }]);
@@ -78,29 +88,23 @@ const BotFloating = ({ userId, userRole }) => {
       const botReply = res.data.response || 'Sin respuesta';
       const action = res.data.action_result;
       setMessages(prev => [...prev, { role: 'bot', text: botReply, action }]);
-      // Speak the response
-      speakText(botReply + (action ? `. Accion: ${action}` : ''));
+      speakText(botReply + (action ? `. Accion ejecutada: ${action}` : ''));
     } catch (err) {
       const errMsg = 'Error al conectar con el Bot';
       setMessages(prev => [...prev, { role: 'bot', text: errMsg }]);
-      speakText(errMsg);
     }
     setLoading(false);
   };
 
-  const sendMessage = async () => {
-    await sendMessageDirect(input);
-  };
-
   const startListening = () => {
+    unlockVoice();
     if (recognitionRef.current && !listening) {
       try {
         window.speechSynthesis.cancel();
+        setSpeaking(false);
         recognitionRef.current.start();
         setListening(true);
-      } catch (e) {
-        console.error('Speech recognition error:', e);
-      }
+      } catch (e) { console.error(e); }
     }
   };
 
@@ -111,22 +115,20 @@ const BotFloating = ({ userId, userRole }) => {
     }
   };
 
-  const stopSpeaking = () => {
-    window.speechSynthesis.cancel();
-    setSpeaking(false);
+  const handleOpen = () => {
+    unlockVoice();
+    setOpen(true);
   };
 
   return (
     <>
-      {/* Floating Button */}
       {!open && (
-        <button data-testid="bot-floating-btn" onClick={() => setOpen(true)}
+        <button data-testid="bot-floating-btn" onClick={handleOpen}
           className="fixed bottom-20 right-4 z-40 w-14 h-14 bg-gradient-to-br from-purple-500 to-indigo-600 rounded-full shadow-xl shadow-purple-500/30 flex items-center justify-center text-2xl active:scale-90 transition-transform border-2 border-white/20">
           🤖
         </button>
       )}
 
-      {/* Chat Panel */}
       {open && (
         <div className="fixed bottom-16 right-3 left-3 z-50 max-w-md ml-auto" style={{maxHeight: '70vh'}}>
           <div className="bg-gray-900 rounded-2xl border border-purple-500/30 shadow-2xl flex flex-col" style={{height: '420px'}}>
@@ -136,17 +138,17 @@ const BotFloating = ({ userId, userRole }) => {
                 <span className="text-xl">{speaking ? '🔊' : '🤖'}</span>
                 <div>
                   <div className="text-white font-bold text-sm">Bot Lluvia Live</div>
-                  <div className="text-green-400 text-[10px]">
+                  <div className={`text-[10px] ${listening ? 'text-red-400' : speaking ? 'text-yellow-400' : 'text-green-400'}`}>
                     {listening ? '🎙️ Escuchando...' : speaking ? '🔊 Hablando...' : 'Privado - Voz activa'}
                   </div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <button data-testid="bot-voice-toggle" onClick={() => setVoiceEnabled(!voiceEnabled)}
+                <button data-testid="bot-voice-toggle" onClick={() => { unlockVoice(); setVoiceEnabled(!voiceEnabled); }}
                   className={`text-xs px-2 py-1 rounded-full ${voiceEnabled ? 'bg-green-600 text-white' : 'bg-gray-700 text-gray-400'}`}>
                   {voiceEnabled ? '🔊' : '🔇'}
                 </button>
-                <button data-testid="bot-close-btn" onClick={() => { stopSpeaking(); setOpen(false); }} className="text-white/50 hover:text-white text-lg">✕</button>
+                <button data-testid="bot-close-btn" onClick={() => { window.speechSynthesis?.cancel(); setOpen(false); }} className="text-white/50 hover:text-white text-lg">✕</button>
               </div>
             </div>
 
@@ -156,10 +158,10 @@ const BotFloating = ({ userId, userRole }) => {
                 <div className="text-center text-white/30 py-6">
                   <div className="text-3xl mb-2">🤖</div>
                   <p className="text-xs mb-1">Habla o escribe</p>
-                  <p className="text-[10px] text-white/20">Toca el microfono para hablar por voz</p>
+                  <p className="text-[10px] text-white/20">Toca el microfono para hablarme por voz</p>
                   <div className="flex flex-wrap gap-1 mt-3 justify-center">
-                    {['¿Cuántos usuarios hay?', '¿Quién es el más rico?', 'Regala 1M a todos'].map(q => (
-                      <button key={q} onClick={() => sendMessageDirect(q)} className="bg-white/10 text-white/60 text-[10px] px-2 py-1 rounded-full hover:bg-white/20">{q}</button>
+                    {['¿Cuantos usuarios hay?', '¿Quien es el mas rico?', 'Regala 1M a todos'].map(q => (
+                      <button key={q} onClick={() => handleSend(q)} className="bg-white/10 text-white/60 text-[10px] px-2 py-1 rounded-full hover:bg-white/20">{q}</button>
                     ))}
                   </div>
                 </div>
@@ -182,32 +184,28 @@ const BotFloating = ({ userId, userRole }) => {
               )}
             </div>
 
-            {/* Input Area with Voice */}
+            {/* Input with Voice */}
             <div className="p-3 border-t border-gray-700 flex-shrink-0">
               <div className="flex gap-2 items-center">
-                {/* Mic Button */}
-                <button data-testid="bot-mic-btn"
-                  onClick={listening ? stopListening : startListening}
+                <button data-testid="bot-mic-btn" onClick={listening ? stopListening : startListening}
                   className={`w-10 h-10 rounded-full flex items-center justify-center text-lg flex-shrink-0 active:scale-90 transition-all ${
-                    listening
-                      ? 'bg-red-500 shadow-lg shadow-red-500/50 animate-pulse'
-                      : 'bg-gray-700 hover:bg-gray-600'
+                    listening ? 'bg-red-500 shadow-lg shadow-red-500/50 animate-pulse' : 'bg-gray-700 hover:bg-gray-600'
                   }`}>
-                  {listening ? '🔴' : '🎙️'}
+                  {listening ? '⏹️' : '🎙️'}
                 </button>
                 <input type="text" value={input} onChange={e => setInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && sendMessage()}
+                  onKeyDown={e => e.key === 'Enter' && handleSend(input)}
                   placeholder={listening ? 'Escuchando...' : 'Escribe o habla...'}
                   data-testid="bot-input"
                   className="flex-1 bg-gray-800 text-white placeholder-white/30 border border-gray-700 rounded-full px-3 py-2 text-xs outline-none focus:border-purple-500" />
-                <button data-testid="bot-send-btn" onClick={sendMessage} disabled={loading || !input.trim()}
+                <button data-testid="bot-send-btn" onClick={() => handleSend(input)} disabled={loading || !input.trim()}
                   className="bg-purple-600 text-white px-3 py-2 rounded-full text-xs font-bold disabled:opacity-50">
                   Enviar
                 </button>
               </div>
               {listening && (
                 <div className="text-center mt-2">
-                  <span className="text-red-400 text-[10px] animate-pulse">🎙️ Habla ahora... toca de nuevo para parar</span>
+                  <span className="text-red-400 text-[10px] animate-pulse">🔴 Habla ahora... toca para parar</span>
                 </div>
               )}
             </div>

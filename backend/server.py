@@ -1927,7 +1927,7 @@ REGLAS:
     chat = LlmChat(
         api_key=llm_key,
         session_id=f"admin_bot_{msg.admin_id}",
-        system_message=f"Eres el Bot Administrativo de Lluvia Live. Solo respondes al dueño. Respondes en español. Si te piden una acción, responde SOLO con el JSON de acción. Si te preguntan datos, responde con la info. Sé conciso.\n\n{context}"
+        system_message=f"Eres el Bot Administrativo de Lluvia Live con capacidad de VOZ. Tu dueño te habla y la app lee tus respuestas en voz alta. Responde de forma natural y conversacional como si estuvieras hablando, porque el dueño te ESCUCHA por voz. Nunca digas que no puedes hablar por voz, porque SI PUEDES - la app convierte tu texto a voz automaticamente. Respondes en español. Si te piden una accion, responde SOLO con el JSON de accion. Si te preguntan datos, responde con la info. Se conciso y directo.\n\n{context}"
     )
     chat.with_model("gemini", "gemini-2.5-flash")
     

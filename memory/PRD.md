@@ -9,22 +9,20 @@
 - [x] Tienda Stripe
 - [x] Clanes y Parejas CP con ranking
 - [x] Notificaciones 4 categorias con toggles
-- [x] Upload foto de perfil + GIF restringido por rango
+- [x] Upload foto de perfil + GIF restringido
 - [x] "por la sala" abre sala personal
 - [x] Fotos en chat de salas
 - [x] Regalos en salas (8 tipos)
-- [x] **Bot flotante con VOZ** — Habla y escucha por voz (Web Speech API gratis), responde por voz en español
-- [x] Bot IA (Gemini) privado, solo Dueño
+- [x] Bot flotante con VOZ COMPLETA - habla y escucha, iOS compatible
+- [x] Bot IA (Gemini) sabe que puede hablar, responde natural
 - [x] RoomView estabilizado
 - [x] Diseño original preservado
 - [x] PWA, iOS, Android, VPS scripts
-- [x] Reels y Fotos multimedia
 
 ## Backlog
 - P0: Ludo WebView
-- P1: Push a GitHub
+- P1: Moderacion IA fotos chat
 - P2: Refactorizar server.py
-- P2: Moderacion IA fotos chat
 
 ## Credenciales
 - Melvin_Live / test123 (Dueño)
