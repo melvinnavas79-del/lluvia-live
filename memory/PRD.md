@@ -10,14 +10,14 @@
 - [x] Clanes y Parejas CP con ranking
 - [x] Notificaciones 4 categorias con toggles
 - [x] Upload foto de perfil + GIF restringido por rango
-- [x] "por la sala" abre sala personal (1 por usuario)
+- [x] "por la sala" abre sala personal
 - [x] Fotos en chat de salas
-- [x] **REGALOS en salas** — 8 regalos (Rosa a Mega Corona), panel abre al tocar usuario sentado, 🎁 icono visible
-- [x] **Bot flotante global** — 🤖 privado solo para Dueño, disponible en toda la app incluso en sala
-- [x] Bot IA (Gemini) funcionando con comandos y acciones
-- [x] RoomView estabilizado, controles al fondo
+- [x] Regalos en salas (8 tipos)
+- [x] **Bot flotante con VOZ** — Habla y escucha por voz (Web Speech API gratis), responde por voz en español
+- [x] Bot IA (Gemini) privado, solo Dueño
+- [x] RoomView estabilizado
 - [x] Diseño original preservado
-- [x] PWA, iOS scaffold, Android build, VPS script
+- [x] PWA, iOS, Android, VPS scripts
 - [x] Reels y Fotos multimedia
 
 ## Backlog
