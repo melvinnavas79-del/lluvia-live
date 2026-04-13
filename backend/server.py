@@ -561,6 +561,40 @@ async def console_broadcast(admin_id: str, message: str):
     broadcast.pop('_id', None)
     return {"success": True, "broadcast": broadcast}
 
+@api_router.post("/admin/console/expand-room")
+async def expand_room_seats(admin_id: str, room_id: str, max_seats: int):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or admin.get('role') != 'dueño':
+        raise HTTPException(status_code=403, detail="Solo el dueño")
+    if max_seats < 9 or max_seats > 24:
+        raise HTTPException(status_code=400, detail="Mínimo 9, máximo 24 micros")
+    
+    room = await db.rooms.find_one({"id": room_id})
+    if not room:
+        raise HTTPException(status_code=404, detail="Sala no encontrada")
+    
+    current_seats = room.get('seats', [])
+    if max_seats > len(current_seats):
+        current_seats.extend([None] * (max_seats - len(current_seats)))
+    else:
+        current_seats = current_seats[:max_seats]
+    
+    await db.rooms.update_one({"id": room_id}, {"$set": {"seats": current_seats, "max_seats": max_seats}})
+    return {"success": True, "max_seats": max_seats}
+
+@api_router.post("/admin/console/update-store")
+async def update_store_package(admin_id: str, package_id: str, coins: int, diamonds: int, price: float, name: str):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or admin.get('role') != 'dueño':
+        raise HTTPException(status_code=403, detail="Solo el dueño")
+    
+    await db.store_config.update_one(
+        {"package_id": package_id},
+        {"$set": {"package_id": package_id, "coins": coins, "diamonds": diamonds, "price": price, "name": name}},
+        upsert=True
+    )
+    return {"success": True}
+
 @api_router.get("/broadcasts")
 async def get_broadcasts():
     msgs = await db.broadcasts.find().sort("created_at", -1).limit(10).to_list(10)

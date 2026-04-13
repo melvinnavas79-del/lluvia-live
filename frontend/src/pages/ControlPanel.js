@@ -77,6 +77,16 @@ const ControlPanel = ({ onBack }) => {
   const [consoleTarget, setConsoleTarget] = useState('');
   const [consoleValue, setConsoleValue] = useState('');
   const [broadcastMsg, setBroadcastMsg] = useState('');
+  const [selectedRoom, setSelectedRoom] = useState('');
+  const [roomMaxSeats, setRoomMaxSeats] = useState(9);
+
+  // Store config
+  const [storePackages, setStorePackages] = useState([
+    { id: 'custom_1', name: 'Pack 1', coins: 50000, diamonds: 100, price: 5 },
+    { id: 'custom_2', name: 'Pack 2', coins: 150000, diamonds: 300, price: 10 },
+    { id: 'custom_3', name: 'Pack 3', coins: 500000, diamonds: 1000, price: 25 },
+    { id: 'custom_4', name: 'Pack 4', coins: 1200000, diamonds: 3000, price: 50 },
+  ]);
 
   const runConsole = async (action) => {
     const target = consoleTarget;
@@ -488,7 +498,7 @@ const ControlPanel = ({ onBack }) => {
             </div>
 
             {/* Broadcast */}
-            <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+            <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-4">
               <h4 className="text-white font-bold mb-2">📢 Mensaje Global</h4>
               <textarea value={broadcastMsg} onChange={e => setBroadcastMsg(e.target.value)}
                 placeholder="Escribe un mensaje para todos los usuarios..."
@@ -496,6 +506,68 @@ const ControlPanel = ({ onBack }) => {
               <button onClick={() => runConsole('broadcast')}
                 className="w-full bg-gradient-to-r from-yellow-600 to-amber-600 py-3 rounded-xl font-bold">
                 📢 ENVIAR A TODOS
+              </button>
+            </div>
+
+            {/* Room Mic Expansion */}
+            <div className="bg-gray-900 rounded-xl p-4 border border-gray-800 mb-4">
+              <h4 className="text-white font-bold mb-2">🎤 Expandir Micros de Sala</h4>
+              <select value={selectedRoom} onChange={e => setSelectedRoom(e.target.value)}
+                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white mb-3">
+                <option value="">-- Seleccionar Sala --</option>
+                {rooms.map(r => (
+                  <option key={r.id} value={r.id}>{r.name} ({r.max_seats || 9} micros)</option>
+                ))}
+              </select>
+              <div className="flex gap-2 mb-3">
+                {[9, 12, 16, 20, 24].map(n => (
+                  <button key={n} onClick={() => setRoomMaxSeats(n)}
+                    className={`flex-1 py-2 rounded-lg font-bold text-sm ${roomMaxSeats === n ? 'bg-yellow-500 text-black' : 'bg-gray-800 text-gray-400'}`}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+              <button onClick={async () => {
+                if (!selectedRoom) return alert('Selecciona una sala');
+                try {
+                  await axios.post(`${API}/admin/console/expand-room?admin_id=${user.id}&room_id=${selectedRoom}&max_seats=${roomMaxSeats}`);
+                  alert(`Sala expandida a ${roomMaxSeats} micros`);
+                  loadAll();
+                } catch (err) { alert(err.response?.data?.detail || 'Error'); }
+              }} className="w-full bg-gradient-to-r from-green-600 to-emerald-600 py-3 rounded-xl font-bold">
+                🎤 EXPANDIR MICROS
+              </button>
+            </div>
+
+            {/* Store Config */}
+            <div className="bg-gray-900 rounded-xl p-4 border border-gray-800">
+              <h4 className="text-white font-bold mb-3">💰 Configurar Precios de Tienda</h4>
+              {storePackages.map((pkg, i) => (
+                <div key={i} className="flex items-center gap-2 mb-2">
+                  <input type="text" value={pkg.name} onChange={e => {
+                    const arr = [...storePackages]; arr[i].name = e.target.value; setStorePackages(arr);
+                  }} className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-white text-xs w-24" placeholder="Nombre" />
+                  <input type="number" value={pkg.coins} onChange={e => {
+                    const arr = [...storePackages]; arr[i].coins = Number(e.target.value); setStorePackages(arr);
+                  }} className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-yellow-400 text-xs w-24" placeholder="Monedas" />
+                  <input type="number" value={pkg.diamonds} onChange={e => {
+                    const arr = [...storePackages]; arr[i].diamonds = Number(e.target.value); setStorePackages(arr);
+                  }} className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-cyan-400 text-xs w-20" placeholder="Diamantes" />
+                  <span className="text-white text-xs">$</span>
+                  <input type="number" value={pkg.price} onChange={e => {
+                    const arr = [...storePackages]; arr[i].price = Number(e.target.value); setStorePackages(arr);
+                  }} className="bg-gray-800 border border-gray-700 rounded-lg px-2 py-1 text-green-400 text-xs w-16" placeholder="Precio" />
+                </div>
+              ))}
+              <button onClick={async () => {
+                try {
+                  for (const pkg of storePackages) {
+                    await axios.post(`${API}/admin/console/update-store?admin_id=${user.id}&package_id=${pkg.id}&coins=${pkg.coins}&diamonds=${pkg.diamonds}&price=${pkg.price}&name=${encodeURIComponent(pkg.name)}`);
+                  }
+                  alert('Precios actualizados');
+                } catch (err) { alert('Error'); }
+              }} className="w-full bg-gradient-to-r from-yellow-600 to-amber-600 py-3 rounded-xl font-bold mt-3">
+                💾 GUARDAR PRECIOS
               </button>
             </div>
           </div>
