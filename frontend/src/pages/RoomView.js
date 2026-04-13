@@ -22,6 +22,7 @@ const RoomView = ({ roomId, onBack }) => {
   const autoMuteTimer = useRef(null);
   const chatContainerRef = useRef(null);
   const prevMsgCount = useRef(0);
+  const photoInputRef = useRef(null);
 
   useEffect(() => {
     loadRoom();
@@ -154,6 +155,22 @@ const RoomView = ({ roomId, onBack }) => {
     } catch (err) {}
   };
 
+  const sendPhoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      await axios.post(`${API}/rooms/${roomId}/chat-photo?user_id=${user.id}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      loadChat();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Error al enviar foto');
+    }
+    if (photoInputRef.current) photoInputRef.current.value = '';
+  };
+
   if (!room) return (
     <div className="h-screen bg-gradient-to-b from-blue-900 to-purple-900 flex items-center justify-center">
       <div className="text-white">Cargando...</div>
@@ -235,6 +252,14 @@ const RoomView = ({ roomId, onBack }) => {
                   <span className="bg-yellow-500/20 text-yellow-300 text-xs px-2 py-0.5 rounded-full">{msg.text}</span>
                 ) : msg.type === 'gift' ? (
                   <span className="bg-pink-500/20 text-pink-300 text-xs px-2 py-0.5 rounded-full">{msg.text}</span>
+                ) : msg.type === 'photo' ? (
+                  <div className="flex items-start gap-1">
+                    <img src={msg.avatar} alt="" className="w-5 h-5 rounded-full mt-0.5" />
+                    <div>
+                      <span className="text-pink-400 text-xs font-bold">{msg.username}</span>
+                      <img src={msg.image_url?.startsWith('/api') ? `${process.env.REACT_APP_BACKEND_URL}${msg.image_url}` : msg.image_url} alt="foto" className="mt-1 max-w-[150px] max-h-[100px] rounded-lg object-cover" />
+                    </div>
+                  </div>
                 ) : (
                   <>
                     <img src={msg.avatar} alt="" className="w-5 h-5 rounded-full mt-0.5" />
@@ -245,6 +270,8 @@ const RoomView = ({ roomId, onBack }) => {
             ))}
           </div>
           <div className="flex gap-2 flex-shrink-0 mt-1">
+            <button data-testid="chat-photo-btn" onClick={() => photoInputRef.current?.click()} className="bg-white/10 text-white w-8 h-8 rounded-full flex items-center justify-center text-sm flex-shrink-0">📷</button>
+            <input ref={photoInputRef} type="file" accept="image/*" onChange={sendPhoto} className="hidden" />
             <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendChat()}
               placeholder="Mensaje..."

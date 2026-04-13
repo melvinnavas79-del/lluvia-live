@@ -1539,64 +1539,106 @@ async def upload_file(file: UploadFile = File(...)):
     file_url = f"/api/uploads/{filename}"
     return {"success": True, "url": file_url, "filename": filename}
 
+# ==================== MY ROOM (Personal Room) ====================
+
+@api_router.post("/rooms/my-room")
+async def get_or_create_my_room(user_id: str):
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    existing = await db.rooms.find_one({"owner_id": user_id})
+    if existing:
+        return serialize_room(existing)
+    room_id = str(uuid.uuid4())
+    room_doc = {
+        "id": room_id, "name": f"Sala de {user['username']}",
+        "owner_id": user_id, "owner_name": user['username'],
+        "active_users": 0, "max_seats": 9, "seats": [None] * 9,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.rooms.insert_one(room_doc)
+    return serialize_room(room_doc)
+
+# ==================== GIF PROFILE PERMISSIONS ====================
+
+@api_router.get("/users/{user_id}/can-use-gif")
+async def check_gif_permission(user_id: str):
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    can_gif = user.get('role') == 'dueño' or user.get('aristocracy', 0) >= 6 or user.get('gif_permission', False)
+    return {"can_use_gif": can_gif}
+
+@api_router.post("/admin/grant-gif/{target_id}")
+async def grant_gif_permission(target_id: str, admin_id: str):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or admin.get('role') != 'dueño':
+        raise HTTPException(status_code=403, detail="Solo el dueño")
+    await db.users.update_one({"id": target_id}, {"$set": {"gif_permission": True}})
+    return {"success": True}
+
+@api_router.post("/admin/revoke-gif/{target_id}")
+async def revoke_gif_permission(target_id: str, admin_id: str):
+    admin = await db.users.find_one({"id": admin_id})
+    if not admin or admin.get('role') != 'dueño':
+        raise HTTPException(status_code=403, detail="Solo el dueño")
+    await db.users.update_one({"id": target_id}, {"$set": {"gif_permission": False}})
+    return {"success": True}
+
 @api_router.post("/users/{user_id}/avatar")
 async def upload_avatar(user_id: str, file: UploadFile = File(...)):
     user = await db.users.find_one({"id": user_id})
     if not user:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    
     ext = file.filename.split('.')[-1].lower() if '.' in file.filename else 'png'
-    allowed_img = ['jpg', 'jpeg', 'png', 'gif', 'webp']
+    can_gif = user.get('role') == 'dueño' or user.get('aristocracy', 0) >= 6 or user.get('gif_permission', False)
+    if ext == 'gif' and not can_gif:
+        raise HTTPException(status_code=403, detail="Necesitas Aristocracia 6+ o permiso del Dueño para usar GIF")
+    allowed_img = ['jpg', 'jpeg', 'png', 'webp'] + (['gif'] if can_gif else [])
     if ext not in allowed_img:
-        raise HTTPException(status_code=400, detail="Solo imagenes: jpg, png, gif, webp")
-    
+        raise HTTPException(status_code=400, detail=f"Formatos: {', '.join(allowed_img)}")
     file_id = str(uuid.uuid4())
     filename = f"avatar_{file_id}.{ext}"
     filepath = UPLOAD_DIR / filename
-    
     content = await file.read()
     with open(filepath, "wb") as f:
         f.write(content)
-    
     avatar_url = f"/api/uploads/{filename}"
     await db.users.update_one({"id": user_id}, {"$set": {"avatar": avatar_url}})
-    
     updated = await db.users.find_one({"id": user_id})
     return {"success": True, "avatar": avatar_url, "user": serialize_user(updated)}
 
-# ==================== FLASH FAME ====================
+# ==================== CHAT PHOTOS ====================
 
-@api_router.get("/flash-fame/all")
-async def get_all_flash_fame():
-    """Get Flash Fame data for individual, clan weekly, clan monthly, and top CP"""
-    result = {}
-    
-    # Top 1 Individual (weekly champion)
-    fame = await db.system.find_one({"key": "flash_fame"})
-    if fame:
-        fame.pop('_id', None)
-        result["individual"] = fame
-    else:
-        top_user = await db.users.find_one({}, sort=[("coins", -1)])
-        if top_user:
-            result["individual"] = {"username": top_user['username'], "avatar": top_user['avatar'], "coins": top_user.get('coins', 0)}
-    
-    # Top Clan Weekly
-    top_clan_weekly = await db.clanes.find_one({}, sort=[("weekly_coins", -1)])
-    if top_clan_weekly:
-        result["clan_semanal"] = {"name": top_clan_weekly['name'], "owner_name": top_clan_weekly.get('owner_name', ''), "members": len(top_clan_weekly.get('members', [])), "weekly_coins": top_clan_weekly.get('weekly_coins', 0)}
-    
-    # Top Clan Monthly
-    top_clan_monthly = await db.clanes.find_one({}, sort=[("monthly_coins", -1)])
-    if top_clan_monthly:
-        result["clan_mensual"] = {"name": top_clan_monthly['name'], "owner_name": top_clan_monthly.get('owner_name', ''), "members": len(top_clan_monthly.get('members', [])), "monthly_coins": top_clan_monthly.get('monthly_coins', 0)}
-    
-    # Top CP (Pareja)
-    top_cp = await db.parejas.find_one({}, sort=[("total_coins", -1)])
-    if top_cp:
-        result["pareja"] = {"user1_name": top_cp.get('user1_name', ''), "user2_name": top_cp.get('user2_name', ''), "level": top_cp.get('level', 1), "total_coins": top_cp.get('total_coins', 0), "ring": top_cp.get('ring', None)}
-    
-    return result
+@api_router.post("/rooms/{room_id}/chat-photo")
+async def send_chat_photo(room_id: str, user_id: str, file: UploadFile = File(...)):
+    user = await db.users.find_one({"id": user_id})
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    room = await db.rooms.find_one({"id": room_id})
+    if not room:
+        raise HTTPException(status_code=404, detail="Sala no encontrada")
+    ext = file.filename.split('.')[-1].lower() if '.' in file.filename else 'png'
+    if ext not in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+        raise HTTPException(status_code=400, detail="Solo imagenes")
+    content = await file.read()
+    if len(content) > 5 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="Max 5MB")
+    file_id = str(uuid.uuid4())
+    filename = f"chat_{file_id}.{ext}"
+    filepath = UPLOAD_DIR / filename
+    with open(filepath, "wb") as f:
+        f.write(content)
+    image_url = f"/api/uploads/{filename}"
+    chat_doc = {
+        "id": str(uuid.uuid4()), "room_id": room_id,
+        "user_id": user_id, "username": user['username'], "avatar": user['avatar'],
+        "text": "", "image_url": image_url, "type": "photo",
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    await db.room_chat.insert_one(chat_doc)
+    chat_doc.pop('_id', None)
+    return chat_doc
 
 # ==================== AGORA TOKEN ====================
 

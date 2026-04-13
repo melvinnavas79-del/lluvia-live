@@ -318,6 +318,16 @@ const ControlPanel = ({ onBack }) => {
                             className="bg-blue-900 text-blue-400 px-2 py-1 rounded text-xs">+10Lv</button>
                           <button onClick={() => updateUserField(u.id, 'aristocracy', Math.min((u.aristocracy || 0) + 1, 9))}
                             className="bg-purple-900 text-purple-400 px-2 py-1 rounded text-xs">+Arist</button>
+                          <button onClick={async () => {
+                            try {
+                              const hasGif = u.gif_permission;
+                              const endpoint = hasGif ? 'revoke-gif' : 'grant-gif';
+                              await axios.post(`${API}/admin/${endpoint}/${u.id}?admin_id=${user.id}`);
+                              loadAll();
+                            } catch (err) { alert(err.response?.data?.detail || 'Error'); }
+                          }}
+                            className={`px-2 py-1 rounded text-xs ${u.gif_permission ? 'bg-yellow-900 text-yellow-400' : 'bg-gray-800 text-gray-400'}`}>
+                            {u.gif_permission ? '🎞️ GIF ON' : '🎞️ GIF'}</button>
                           <button onClick={() => banUser(u.id)}
                             className="bg-orange-900 text-orange-400 px-2 py-1 rounded text-xs">Ban</button>
                           <button onClick={() => deleteUser(u.id)}
