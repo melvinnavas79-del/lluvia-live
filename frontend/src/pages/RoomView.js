@@ -16,6 +16,9 @@ const RoomView = ({ roomId, onBack }) => {
   const [chatInput, setChatInput] = useState('');
   const [audioStatus, setAudioStatus] = useState('off');
   const [entryAnim, setEntryAnim] = useState(null);
+  const [showGifts, setShowGifts] = useState(false);
+  const [giftTarget, setGiftTarget] = useState(null);
+  const [gifts, setGifts] = useState({});
 
   const clientRef = useRef(null);
   const localTrackRef = useRef(null);
@@ -27,12 +30,12 @@ const RoomView = ({ roomId, onBack }) => {
   useEffect(() => {
     loadRoom();
     loadChat();
+    loadGifts();
     const r = setInterval(loadRoom, 3000);
     const c = setInterval(loadChat, 2000);
     return () => { clearInterval(r); clearInterval(c); leaveAgora(); };
   }, [roomId]);
 
-  // Only auto-scroll chat container (not the page) when new messages arrive
   useEffect(() => {
     if (chatMessages.length > prevMsgCount.current && chatContainerRef.current) {
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
@@ -56,38 +59,38 @@ const RoomView = ({ roomId, onBack }) => {
     } catch (err) { console.error(err); }
   };
 
+  const loadGifts = async () => {
+    try {
+      const res = await axios.get(`${API}/gifts`);
+      setGifts(res.data);
+    } catch (err) { console.error(err); }
+  };
+
   const joinAgora = async () => {
     try {
       setAudioStatus('connecting');
       const tokenRes = await axios.post(`${API}/agora/token?channel_name=room_${roomId}&user_id=${user.id}`);
       const { token, uid, app_id } = tokenRes.data;
-
       const client = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
       clientRef.current = client;
-
       client.on('user-published', async (remoteUser, mediaType) => {
         if (mediaType === 'audio') {
           await client.subscribe(remoteUser, 'audio');
           remoteUser.audioTrack?.play();
         }
       });
-
       await client.join(app_id, `room_${roomId}`, token, uid);
-
       const localTrack = await AgoraRTC.createMicrophoneAudioTrack();
       localTrackRef.current = localTrack;
       await client.publish([localTrack]);
-
       setAudioStatus('on');
       setIsMuted(false);
-
       await axios.post(`${API}/rooms/${roomId}/welcome?user_id=${user.id}`);
       loadChat();
       try {
         const animRes = await axios.get(`${API}/users/${user.id}/entry-animation`);
         if (animRes.data.special) setEntryAnim({ animation: animRes.data.animation, username: user.username });
       } catch (e) {}
-
       startAutoMuteTimer();
     } catch (err) {
       console.error('Agora error:', err);
@@ -165,10 +168,32 @@ const RoomView = ({ roomId, onBack }) => {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       loadChat();
-    } catch (err) {
-      alert(err.response?.data?.detail || 'Error al enviar foto');
-    }
+    } catch (err) { alert(err.response?.data?.detail || 'Error al enviar foto'); }
     if (photoInputRef.current) photoInputRef.current.value = '';
+  };
+
+  const sendGift = async (giftType) => {
+    if (!giftTarget) return;
+    try {
+      await axios.post(`${API}/gifts/send`, {
+        sender_id: user.id,
+        receiver_id: giftTarget.user_id,
+        gift_type: giftType,
+        room_id: roomId
+      });
+      setShowGifts(false);
+      setGiftTarget(null);
+      loadChat();
+    } catch (err) {
+      alert(err.response?.data?.detail || 'Error al enviar regalo');
+    }
+  };
+
+  const openGiftPanel = (seat) => {
+    if (seat && seat.user_id !== user.id) {
+      setGiftTarget(seat);
+      setShowGifts(true);
+    }
   };
 
   if (!room) return (
@@ -178,10 +203,33 @@ const RoomView = ({ roomId, onBack }) => {
   );
 
   return (
-    <div className="h-screen flex flex-col bg-gradient-to-b from-blue-900 via-purple-900 to-blue-900 overflow-hidden">
+    <div className="h-screen flex flex-col bg-gradient-to-b from-blue-900 via-purple-900 to-blue-900 overflow-hidden relative">
       {entryAnim && <EntryAnimation animation={entryAnim.animation} username={entryAnim.username} onComplete={() => setEntryAnim(null)} />}
 
-      {/* Header - fixed height */}
+      {/* Gift Panel Overlay */}
+      {showGifts && giftTarget && (
+        <div className="absolute inset-0 z-50 bg-black/60 flex items-end" onClick={() => { setShowGifts(false); setGiftTarget(null); }}>
+          <div className="w-full bg-gray-900 rounded-t-3xl p-4 max-h-[60vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-white font-bold">Enviar regalo a {giftTarget.username}</h3>
+              <button data-testid="close-gifts-btn" onClick={() => { setShowGifts(false); setGiftTarget(null); }} className="text-white/50 text-xl">✕</button>
+            </div>
+            <div className="grid grid-cols-4 gap-2">
+              {Object.entries(gifts).map(([key, g]) => (
+                <button key={key} data-testid={`gift-btn-${key}`} onClick={() => sendGift(key)}
+                  className="bg-white/10 rounded-xl p-3 text-center hover:bg-white/20 transition-all active:scale-95">
+                  <div className="text-2xl mb-1">{g.emoji}</div>
+                  <div className="text-white text-[10px] font-bold">{g.name}</div>
+                  <div className="text-yellow-400 text-[10px]">{g.cost.toLocaleString()}</div>
+                </button>
+              ))}
+            </div>
+            <p className="text-white/40 text-xs text-center mt-3">Tus monedas: {(user.coins || 0).toLocaleString()}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
       <div className="flex-shrink-0 p-3">
         <div className="flex items-center justify-between bg-white/10 backdrop-blur border border-white/20 rounded-2xl p-3">
           <button data-testid="room-back-btn" onClick={() => { leaveAgora(); onBack(); }} className="bg-pink-500 text-white px-4 py-2 rounded-full text-sm font-bold">← Volver</button>
@@ -198,16 +246,17 @@ const RoomView = ({ roomId, onBack }) => {
         </div>
       </div>
 
-      {/* Seats - scrollable area */}
+      {/* Seats */}
       <div className="flex-shrink-0 px-3 mb-1 overflow-y-auto" style={{maxHeight: '40vh'}}>
         <div className="bg-white/5 backdrop-blur border border-white/10 rounded-2xl p-2">
           <div className="grid grid-cols-3 gap-1.5">
             {room.seats.map((seat, index) => (
-              <button
-                key={index}
-                data-testid={`seat-btn-${index}`}
-                onClick={() => seat ? (seat.user_id === user.id ? leaveSeat() : null) : joinSeat(index)}
-                disabled={seat && seat.user_id !== user.id}
+              <button key={index} data-testid={`seat-btn-${index}`}
+                onClick={() => {
+                  if (seat && seat.user_id === user.id) leaveSeat();
+                  else if (seat && seat.user_id !== user.id) openGiftPanel(seat);
+                  else joinSeat(index);
+                }}
                 className={`relative w-full h-20 rounded-xl border-2 transition-all ${
                   seat
                     ? seat.user_id === user.id
@@ -227,6 +276,9 @@ const RoomView = ({ roomId, onBack }) => {
                           {isMuted ? '🔇' : '🎤'}
                         </div>
                       )}
+                      {seat.user_id !== user.id && (
+                        <div className="absolute bottom-0.5 right-0.5 bg-pink-500 rounded-full w-4 h-4 flex items-center justify-center text-[8px]">🎁</div>
+                      )}
                     </>
                   ) : (
                     <>
@@ -241,7 +293,7 @@ const RoomView = ({ roomId, onBack }) => {
         </div>
       </div>
 
-      {/* Chat - fills remaining space */}
+      {/* Chat */}
       <div className="flex-1 min-h-0 px-3 pb-2">
         <div className="bg-white/5 backdrop-blur border border-white/10 rounded-2xl p-3 h-full flex flex-col">
           <h4 className="text-white/70 font-bold text-xs mb-1 flex-shrink-0">💬 Chat</h4>
@@ -257,7 +309,7 @@ const RoomView = ({ roomId, onBack }) => {
                     <img src={msg.avatar} alt="" className="w-5 h-5 rounded-full mt-0.5" />
                     <div>
                       <span className="text-pink-400 text-xs font-bold">{msg.username}</span>
-                      <img src={msg.image_url?.startsWith('/api') ? `${process.env.REACT_APP_BACKEND_URL}${msg.image_url}` : msg.image_url} alt="foto" className="mt-1 max-w-[150px] max-h-[100px] rounded-lg object-cover" />
+                      <img src={msg.image_url?.startsWith('/api') ? `${process.env.REACT_APP_BACKEND_URL}${msg.image_url}` : msg.image_url} alt="" className="mt-1 max-w-[150px] max-h-[100px] rounded-lg object-cover" />
                     </div>
                   </div>
                 ) : (
@@ -274,28 +326,23 @@ const RoomView = ({ roomId, onBack }) => {
             <input ref={photoInputRef} type="file" accept="image/*" onChange={sendPhoto} className="hidden" />
             <input type="text" value={chatInput} onChange={e => setChatInput(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && sendChat()}
-              placeholder="Mensaje..."
-              data-testid="chat-input"
+              placeholder="Mensaje..." data-testid="chat-input"
               className="flex-1 bg-white/10 text-white placeholder-white/30 border border-white/20 rounded-full px-3 py-2 text-xs outline-none" />
             <button data-testid="chat-send-btn" onClick={sendChat} className="bg-pink-500 text-white px-3 py-2 rounded-full text-xs font-bold">Enviar</button>
           </div>
         </div>
       </div>
 
-      {/* AUDIO CONTROLS - FIXED AT BOTTOM */}
+      {/* Audio Controls */}
       {mySeat !== null && (
         <div className="flex-shrink-0 bg-black/80 backdrop-blur-xl px-3 pb-3 pt-2 border-t border-white/10">
           <div className="flex items-center justify-center gap-4">
             <button data-testid="toggle-mute-btn" onClick={toggleMute}
-              className={`w-12 h-12 rounded-full flex items-center justify-center text-xl shadow-lg active:scale-95 transition-transform ${
-                isMuted ? 'bg-red-500 shadow-red-500/40' : 'bg-green-500 shadow-green-500/40'
-              }`}>
+              className={`w-12 h-12 rounded-full flex items-center justify-center text-xl shadow-lg active:scale-95 transition-transform ${isMuted ? 'bg-red-500 shadow-red-500/40' : 'bg-green-500 shadow-green-500/40'}`}>
               {isMuted ? '🔇' : '🎤'}
             </button>
             <button data-testid="toggle-deafen-btn" onClick={toggleDeafen}
-              className={`w-12 h-12 rounded-full flex items-center justify-center text-xl shadow-lg active:scale-95 transition-transform ${
-                isDeafened ? 'bg-orange-500 shadow-orange-500/40' : 'bg-blue-500 shadow-blue-500/40'
-              }`}>
+              className={`w-12 h-12 rounded-full flex items-center justify-center text-xl shadow-lg active:scale-95 transition-transform ${isDeafened ? 'bg-orange-500 shadow-orange-500/40' : 'bg-blue-500 shadow-blue-500/40'}`}>
               {isDeafened ? '🔕' : '🔊'}
             </button>
             <button data-testid="leave-seat-btn" onClick={leaveSeat}
